@@ -1,0 +1,188 @@
+[
+    {
+        "id": "Q1",
+        "type": "lookup",
+        "question": "Where is res.json() defined?",
+        "expected_files": [
+            "lib/response.js"
+        ],
+        "marker": "res.json = function json"
+    },
+    {
+        "id": "Q2",
+        "type": "lookup",
+        "question": "Where is res.redirect() defined?",
+        "expected_files": [
+            "lib/response.js"
+        ],
+        "marker": "res.redirect = function redirect"
+    },
+    {
+        "id": "Q3",
+        "type": "lookup",
+        "question": "Where is req.get() / req.header() defined?",
+        "expected_files": [
+            "lib/request.js"
+        ],
+        "marker": "function header(name)"
+    },
+    {
+        "id": "Q4",
+        "type": "lookup",
+        "question": "Where is the createApplication() function that builds an Express app defined?",
+        "expected_files": [
+            "lib/express.js"
+        ],
+        "marker": "function createApplication()"
+    },
+    {
+        "id": "Q5",
+        "type": "lookup",
+        "question": "Where is app.listen() implemented?",
+        "expected_files": [
+            "lib/application.js"
+        ],
+        "marker": "app.listen = function listen()"
+    },
+    {
+        "id": "Q6",
+        "type": "lookup",
+        "question": "Where is app.use() implemented?",
+        "expected_files": [
+            "lib/application.js"
+        ],
+        "marker": "app.use = function use("
+    },
+    {
+        "id": "Q7",
+        "type": "lookup",
+        "question": "Where is the View class that locates and loads template files defined?",
+        "expected_files": [
+            "lib/view.js"
+        ],
+        "marker": "function View(name, options)"
+    },
+    {
+        "id": "Q8",
+        "type": "lookup",
+        "question": "What dependencies does Express declare, and what Node.js version does it require?",
+        "expected_files": [
+            "package.json"
+        ],
+        "marker": "\"engines\""
+    },
+    {
+        "id": "Q9",
+        "type": "behavior",
+        "question": "How does res.send() decide which Content-Type to set for a string, an object or a Buffer?",
+        "expected_files": [
+            "lib/response.js"
+        ],
+        "marker": "switch (typeof chunk)"
+    },
+    {
+        "id": "Q10",
+        "type": "behavior",
+        "question": "How does res.send() support conditional GET requests and respond with 304 Not Modified?",
+        "expected_files": [
+            "lib/response.js"
+        ],
+        "marker": "req.fresh"
+    },
+    {
+        "id": "Q11",
+        "type": "behavior",
+        "question": "How does res.cookie() handle the maxAge option?",
+        "expected_files": [
+            "lib/response.js"
+        ],
+        "marker": "maxAge"
+    },
+    {
+        "id": "Q12",
+        "type": "behavior",
+        "question": "How does the View class pick the template engine when a view name has no file extension?",
+        "expected_files": [
+            "lib/view.js"
+        ],
+        "marker": "defaultEngine"
+    },
+    {
+        "id": "Q13",
+        "type": "behavior",
+        "question": "How does app.render() decide whether to cache compiled views?",
+        "expected_files": [
+            "lib/application.js"
+        ],
+        "marker": "view cache"
+    },
+    {
+        "id": "Q14",
+        "type": "behavior",
+        "question": "How does req.protocol work out the protocol when the app is behind a proxy?",
+        "expected_files": [
+            "lib/request.js"
+        ],
+        "marker": "X-Forwarded-Proto"
+    },
+    {
+        "id": "Q15",
+        "type": "behavior",
+        "question": "What happens to a request that no route handles or that ends in an error with no error handler registered?",
+        "expected_files": [
+            "lib/application.js"
+        ],
+        "marker": "finalhandler(req, res"
+    },
+    {
+        "id": "Q16",
+        "type": "behavior",
+        "question": "How does app.get() tell apart reading a setting from registering a GET route?",
+        "expected_files": [
+            "lib/application.js"
+        ],
+        "marker": "method === 'get'"
+    },
+    {
+        "id": "Q17",
+        "type": "multi",
+        "question": "How does Express give Node's request and response objects its extra methods?",
+        "expected_files": [
+            "lib/express.js",
+            "lib/request.js",
+            "lib/response.js"
+        ],
+        "marker": "app.request = Object.create(req"
+    },
+    {
+        "id": "Q18",
+        "type": "multi",
+        "question": "How is the 'trust proxy' setting turned into a function that the rest of Express uses?",
+        "expected_files": [
+            "lib/application.js",
+            "lib/utils.js"
+        ],
+        "marker": "compileTrust"
+    },
+    {
+        "id": "Q19",
+        "type": "multi",
+        "question": "How does Express expose express.json() and express.urlencoded(), and which package provides them?",
+        "expected_files": [
+            "lib/express.js",
+            "package.json"
+        ],
+        "marker": "bodyParser"
+    },
+    {
+        "id": "Q20",
+        "type": "multi",
+        "question": "How does Express generate ETags for responses, and how does the 'etag' setting control it?",
+        "expected_files": [
+            "lib/application.js",
+            "lib/utils.js",
+            "lib/response.js"
+        ],
+        "marker": "compileETag"
+    }
+]
