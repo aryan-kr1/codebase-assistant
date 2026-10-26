@@ -38,6 +38,21 @@ def tokenize(text: str):
     return re.findall(r"[a-z0-9]+", text.lower())
 
 
+REWRITE_PROMPT = ChatPromptTemplate.from_template(
+    "Rewrite this question about a codebase as a short search query: "
+    "include likely function names, file names and keywords. "
+    "Output only the query.\n\nQuestion: {question}"
+)
+
+
+def rewrite_query(question: str) -> str:
+    llm = ChatGroq(
+        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"), temperature=0
+    )
+    chain = REWRITE_PROMPT | llm | StrOutputParser()
+    return chain.invoke({"question": question}).strip()
+
+
 def retrieve(repo: str, question: str, k: int = 5):
     store = Chroma(
         collection_name=repo,
@@ -45,8 +60,10 @@ def retrieve(repo: str, question: str, k: int = 5):
         persist_directory=str(DB_DIR),
     )
 
+    search_q = rewrite_query(question)
+
     # vector top 20
-    vec_docs = store.similarity_search(question, k=POOL)
+    vec_docs = store.similarity_search(search_q, k=POOL)
 
     # BM25 top 20 over all chunks in the collection
     data = store.get()
@@ -55,7 +72,7 @@ def retrieve(repo: str, question: str, k: int = 5):
         for t, m in zip(data["documents"], data["metadatas"])
     ]
     bm25 = BM25Okapi([tokenize(d.page_content) for d in all_docs])
-    scores = bm25.get_scores(tokenize(question))
+    scores = bm25.get_scores(tokenize(search_q))
     top = sorted(range(len(all_docs)), key=lambda i: scores[i], reverse=True)[:POOL]
     bm25_docs = [all_docs[i] for i in top]
 
@@ -71,7 +88,7 @@ def retrieve(repo: str, question: str, k: int = 5):
     best = sorted(fused, key=fused.get, reverse=True)[:CANDIDATES]
     candidates = [by_key[key] for key in best]
 
-    # rerank candidates with a cross-encoder
+    # rerank against the ORIGINAL question
     reranker = CrossEncoder(RERANK_MODEL)
     scores = reranker.predict([(question, d.page_content) for d in candidates])
     order = sorted(range(len(candidates)), key=lambda i: scores[i], reverse=True)
