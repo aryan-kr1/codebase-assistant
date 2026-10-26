@@ -6,3 +6,10 @@
 | hybrid          | BM25 + Vector Search + RRF                  | 70%   | 95%         | 0.529 |
 | rerank          | Hybrid search + cross-encoder reranking     | 85%   | 95%         | 0.693 |
 | rewrite         | Query rewriting + hybrid search + reranking | 85%   | 95%         | 0.693 |
+
+### Held-out set (questions2.json, 20 new Express questions, not tuned on)
+
+| Run                 | Setup                                           | hit@5 | file-only@5 | MRR   |
+| ------------------- | ----------------------------------------------- | ----- | ----------- | ----- |
+| heldout-rewrite-on  | path filter + hybrid + rerank + query rewriting | 95%   | 100%        | 0.825 |
+| heldout-rewrite-off | path filter + hybrid + rerank (final setup)     | 95%   | 100%        | 0.817 |
