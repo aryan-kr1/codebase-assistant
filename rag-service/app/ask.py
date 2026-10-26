@@ -1,6 +1,8 @@
 import os
 import sys
 
+from sentence_transformers import CrossEncoder
+
 import re
 from langchain_core.documents import Document
 from rank_bm25 import BM25Okapi
@@ -28,6 +30,8 @@ Question: {question}"""
 
 POOL = 20
 RRF_C = 60
+CANDIDATES = 20
+RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 
 def tokenize(text: str):
@@ -64,8 +68,14 @@ def retrieve(repo: str, question: str, k: int = 5):
             by_key[key] = d
             fused[key] = fused.get(key, 0) + 1 / (RRF_C + rank)
 
-    best = sorted(fused, key=fused.get, reverse=True)[:k]
-    return [by_key[key] for key in best]
+    best = sorted(fused, key=fused.get, reverse=True)[:CANDIDATES]
+    candidates = [by_key[key] for key in best]
+
+    # rerank candidates with a cross-encoder
+    reranker = CrossEncoder(RERANK_MODEL)
+    scores = reranker.predict([(question, d.page_content) for d in candidates])
+    order = sorted(range(len(candidates)), key=lambda i: scores[i], reverse=True)
+    return [candidates[i] for i in order[:k]]
 
 
 def format_context(docs):
