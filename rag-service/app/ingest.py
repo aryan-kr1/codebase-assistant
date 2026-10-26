@@ -3,7 +3,7 @@ import subprocess
 import sys
 
 from langchain_chroma import Chroma
-from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.config import (
     CHUNK_OVERLAP,
@@ -42,36 +42,10 @@ def iter_files(root):
         yield p
 
 
-LANG_BY_EXT = {
-    ".py": Language.PYTHON,
-    ".js": Language.JS,
-    ".jsx": Language.JS,
-    ".ts": Language.TS,
-    ".tsx": Language.TS,
-    ".java": Language.JAVA,
-    ".go": Language.GO,
-    ".rs": Language.RUST,
-    ".c": Language.C,
-    ".h": Language.C,
-    ".cpp": Language.CPP,
-}
-
-
-def make_splitter(suffix: str):
-    lang = LANG_BY_EXT.get(suffix)
-    if lang:
-        return RecursiveCharacterTextSplitter.from_language(
-            language=lang,
-            chunk_size=CHUNK_SIZE,
-            chunk_overlap=CHUNK_OVERLAP,
-            add_start_index=True,
-        )
-    return RecursiveCharacterTextSplitter(
+def chunk_repo(root):
+    splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP, add_start_index=True
     )
-
-
-def chunk_repo(root):
     chunks = []
     for path in iter_files(root):
         try:
@@ -79,7 +53,6 @@ def chunk_repo(root):
         except UnicodeDecodeError:
             continue
         rel = path.relative_to(root).as_posix()
-        splitter = make_splitter(path.suffix)
         for doc in splitter.create_documents([text], metadatas=[{"file": rel}]):
             start = doc.metadata["start_index"]
             doc.metadata["start_line"] = text.count("\n", 0, start) + 1
