@@ -1,0 +1,332 @@
+{
+  "label": "path-filter",
+  "repo": "express",
+  "k": 5,
+  "chunk_size": 1000,
+  "chunk_overlap": 150,
+  "hit_at_k": 0.6,
+  "file_only_hit_at_k": 0.9,
+  "mrr": 0.4141666666666667,
+  "rows": [
+    {
+      "id": "Q1",
+      "type": "lookup",
+      "question": "Where is res.json() defined?",
+      "hit": true,
+      "rank": 3,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/response.js:545-572",
+        "lib/response.js:516-550",
+        "lib/response.js:236-271",
+        "lib/response.js:302-332",
+        "lib/response.js:646-683"
+      ]
+    },
+    {
+      "id": "Q2",
+      "type": "lookup",
+      "question": "Where is res.redirect() defined?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/response.js:797-839",
+        "lib/response.js:334-358",
+        "lib/response.js:375-410",
+        "lib/application.js:225-258",
+        "lib/response.js:356-373"
+      ]
+    },
+    {
+      "id": "Q3",
+      "type": "lookup",
+      "question": "Where is req.get() / req.header() defined?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/request.js:30-83",
+        "lib/response.js:334-358",
+        "lib/utils.js:1-49",
+        "lib/request.js:214-241",
+        "lib/application.js:1-45"
+      ]
+    },
+    {
+      "id": "Q4",
+      "type": "lookup",
+      "question": "Where is the createApplication() function that builds an Express app defined?",
+      "hit": true,
+      "rank": 2,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "index.js:1-11",
+        "lib/express.js:1-42",
+        "lib/application.js:281-292",
+        "lib/application.js:260-283",
+        "lib/application.js:1-45"
+      ]
+    },
+    {
+      "id": "Q5",
+      "type": "lookup",
+      "question": "Where is app.listen() implemented?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/application.js:598-631",
+        "lib/request.js:317-359",
+        "lib/application.js:567-596",
+        "lib/application.js:225-258",
+        "lib/request.js:357-386"
+      ]
+    },
+    {
+      "id": "Q6",
+      "type": "lookup",
+      "question": "Where is app.use() implemented?",
+      "hit": false,
+      "rank": null,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/application.js:225-258",
+        "lib/application.js:281-292",
+        "lib/application.js:294-334",
+        "lib/application.js:260-283",
+        "package.json:31-70"
+      ]
+    },
+    {
+      "id": "Q7",
+      "type": "lookup",
+      "question": "Where is the View class that locates and loads template files defined?",
+      "hit": true,
+      "rank": 2,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/application.js:552-575",
+        "lib/view.js:1-53",
+        "lib/application.js:260-283",
+        "lib/view.js:87-136",
+        "lib/view.js:52-91"
+      ]
+    },
+    {
+      "id": "Q8",
+      "type": "lookup",
+      "question": "What dependencies does Express declare, and what Node.js version does it require?",
+      "hit": false,
+      "rank": null,
+      "file_only_hit": false,
+      "all_files_found": false,
+      "retrieved": [
+        "index.js:1-11",
+        "lib/application.js:281-292",
+        "lib/application.js:260-283",
+        "lib/application.js:1-45",
+        "lib/express.js:1-42"
+      ]
+    },
+    {
+      "id": "Q9",
+      "type": "behavior",
+      "question": "How does res.send() decide which Content-Type to set for a string, an object or a Buffer?",
+      "hit": false,
+      "rank": null,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/response.js:334-358",
+        "lib/response.js:516-550",
+        "lib/response.js:646-683",
+        "lib/response.js:484-514",
+        "lib/response.js:545-572"
+      ]
+    },
+    {
+      "id": "Q10",
+      "type": "behavior",
+      "question": "How does res.send() support conditional GET requests and respond with 304 Not Modified?",
+      "hit": false,
+      "rank": null,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/request.js:455-499",
+        "lib/response.js:516-550",
+        "lib/response.js:334-358",
+        "lib/response.js:302-332",
+        "lib/response.js:356-373"
+      ]
+    },
+    {
+      "id": "Q11",
+      "type": "behavior",
+      "question": "How does res.cookie() handle the maxAge option?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/response.js:721-759",
+        "lib/response.js:757-799",
+        "lib/response.js:685-722",
+        "package.json:66-96",
+        "lib/response.js:334-358"
+      ]
+    },
+    {
+      "id": "Q12",
+      "type": "behavior",
+      "question": "How does the View class pick the template engine when a view name has no file extension?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/view.js:52-91",
+        "lib/application.js:260-283",
+        "lib/application.js:552-575",
+        "lib/view.js:1-53",
+        "lib/view.js:87-136"
+      ]
+    },
+    {
+      "id": "Q13",
+      "type": "behavior",
+      "question": "How does app.render() decide whether to cache compiled views?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/application.js:522-556",
+        "lib/response.js:878-921",
+        "lib/application.js:552-575",
+        "lib/view.js:133-178",
+        "lib/application.js:567-596"
+      ]
+    },
+    {
+      "id": "Q14",
+      "type": "behavior",
+      "question": "How does req.protocol work out the protocol when the app is behind a proxy?",
+      "hit": true,
+      "rank": 2,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/request.js:317-359",
+        "lib/request.js:280-324",
+        "lib/request.js:357-386",
+        "lib/request.js:418-458",
+        "lib/application.js:225-258"
+      ]
+    },
+    {
+      "id": "Q15",
+      "type": "behavior",
+      "question": "What happens to a request that no route handles or that ends in an error with no error handler registered?",
+      "hit": false,
+      "rank": null,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/application.js:478-520",
+        "lib/response.js:334-358",
+        "lib/application.js:420-476",
+        "lib/application.js:225-258",
+        "lib/application.js:294-334"
+      ]
+    },
+    {
+      "id": "Q16",
+      "type": "behavior",
+      "question": "How does app.get() tell apart reading a setting from registering a GET route?",
+      "hit": true,
+      "rank": 5,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/application.js:225-258",
+        "lib/application.js:80-115",
+        "lib/application.js:373-422",
+        "lib/application.js:190-227",
+        "lib/application.js:420-476"
+      ]
+    },
+    {
+      "id": "Q17",
+      "type": "multi",
+      "question": "How does Express give Node's request and response objects its extra methods?",
+      "hit": false,
+      "rank": null,
+      "file_only_hit": true,
+      "all_files_found": false,
+      "retrieved": [
+        "lib/response.js:545-572",
+        "lib/response.js:302-332",
+        "lib/utils.js:1-49",
+        "lib/application.js:281-292",
+        "lib/express.js:1-42"
+      ]
+    },
+    {
+      "id": "Q18",
+      "type": "multi",
+      "question": "How is the 'trust proxy' setting turned into a function that the rest of Express uses?",
+      "hit": false,
+      "rank": null,
+      "file_only_hit": true,
+      "all_files_found": false,
+      "retrieved": [
+        "lib/request.js:317-359",
+        "lib/application.js:36-83",
+        "lib/request.js:418-458",
+        "lib/request.js:357-386",
+        "lib/application.js:152-192"
+      ]
+    },
+    {
+      "id": "Q19",
+      "type": "multi",
+      "question": "How does Express expose express.json() and express.urlencoded(), and which package provides them?",
+      "hit": false,
+      "rank": null,
+      "file_only_hit": false,
+      "all_files_found": false,
+      "retrieved": [
+        "lib/response.js:545-572",
+        "lib/response.js:236-271",
+        "lib/utils.js:1-49",
+        "index.js:1-11",
+        "lib/application.js:260-283"
+      ]
+    },
+    {
+      "id": "Q20",
+      "type": "multi",
+      "question": "How does Express generate ETags for responses, and how does the 'etag' setting control it?",
+      "hit": true,
+      "rank": 4,
+      "file_only_hit": true,
+      "all_files_found": false,
+      "retrieved": [
+        "lib/utils.js:202-247",
+        "lib/request.js:455-499",
+        "lib/response.js:187-234",
+        "lib/utils.js:119-167",
+        "lib/response.js:161-185"
+      ]
+    }
+  ]
+}

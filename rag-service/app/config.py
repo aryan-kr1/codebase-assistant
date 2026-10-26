@@ -36,8 +36,19 @@ SKIP_DIRS = {
     "vendor",
     "coverage",
     ".next",
+    "test",
+    "tests",
+    "examples",
 }
-SKIP_FILES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml"}
+SKIP_FILES = {
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "History.md",
+    "Readme.md",
+    "CHANGELOG.md",
+    "CHANGES.md",
+}
 MAX_FILE_BYTES = 200_000
 
 
