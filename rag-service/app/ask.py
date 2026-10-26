@@ -1,6 +1,10 @@
 import os
 import sys
 
+import re
+from langchain_core.documents import Document
+from rank_bm25 import BM25Okapi
+
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
 from langchain_core.output_parsers import StrOutputParser
@@ -22,13 +26,46 @@ Question: {question}"""
 )
 
 
+POOL = 20
+RRF_C = 60
+
+
+def tokenize(text: str):
+    return re.findall(r"[a-z0-9]+", text.lower())
+
+
 def retrieve(repo: str, question: str, k: int = 5):
     store = Chroma(
         collection_name=repo,
         embedding_function=get_embeddings(),
         persist_directory=str(DB_DIR),
     )
-    return store.similarity_search(question, k=k)
+
+    # vector top 20
+    vec_docs = store.similarity_search(question, k=POOL)
+
+    # BM25 top 20 over all chunks in the collection
+    data = store.get()
+    all_docs = [
+        Document(page_content=t, metadata=m)
+        for t, m in zip(data["documents"], data["metadatas"])
+    ]
+    bm25 = BM25Okapi([tokenize(d.page_content) for d in all_docs])
+    scores = bm25.get_scores(tokenize(question))
+    top = sorted(range(len(all_docs)), key=lambda i: scores[i], reverse=True)[:POOL]
+    bm25_docs = [all_docs[i] for i in top]
+
+    # Reciprocal Rank Fusion
+    fused = {}
+    by_key = {}
+    for ranked in (vec_docs, bm25_docs):
+        for rank, d in enumerate(ranked, start=1):
+            key = (d.metadata["file"], d.metadata["start_line"], d.metadata["end_line"])
+            by_key[key] = d
+            fused[key] = fused.get(key, 0) + 1 / (RRF_C + rank)
+
+    best = sorted(fused, key=fused.get, reverse=True)[:k]
+    return [by_key[key] for key in best]
 
 
 def format_context(docs):

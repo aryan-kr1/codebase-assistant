@@ -3,3 +3,4 @@
 | baseline        | naive chunks, vector search | 30%   | 55%         | 0.145 |
 | path_filter     | Path-based filtering        | 60%   | 90%         | 0.414 |
 | syntax_chunking | Syntax-aware chunking       | 55%   | 90%         | 0.377 |
+| hybrid          | BM25 + Vector Search + RRF  | 70%   | 95%         | 0.529 |
