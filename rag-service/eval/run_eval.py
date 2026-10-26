@@ -53,9 +53,10 @@ def main():
     parser.add_argument("repo")
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--label", default="baseline")
+    parser.add_argument("--questions", default="questions.json")
     args = parser.parse_args()
 
-    questions = json.loads((EVAL_DIR / "questions.json").read_text(encoding="utf-8"))
+    questions = json.loads((EVAL_DIR / args.questions).read_text(encoding="utf-8"))
 
     problems = preflight(questions, REPOS_DIR / args.repo)
     if problems:

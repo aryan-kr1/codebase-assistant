@@ -1,0 +1,186 @@
+[
+  {
+    "id": "Q1",
+    "type": "lookup",
+    "question": "Where is res.sendFile() defined?",
+    "expected_files": [
+      "lib/response.js"
+    ],
+    "marker": "res.sendFile = function sendFile"
+  },
+  {
+    "id": "Q2",
+    "type": "lookup",
+    "question": "Where is res.status() defined?",
+    "expected_files": [
+      "lib/response.js"
+    ],
+    "marker": "res.status = function status"
+  },
+  {
+    "id": "Q3",
+    "type": "lookup",
+    "question": "Where is app.set() implemented?",
+    "expected_files": [
+      "lib/application.js"
+    ],
+    "marker": "app.set = function set"
+  },
+  {
+    "id": "Q4",
+    "type": "lookup",
+    "question": "Where is app.engine() defined?",
+    "expected_files": [
+      "lib/application.js"
+    ],
+    "marker": "app.engine = function engine"
+  },
+  {
+    "id": "Q5",
+    "type": "lookup",
+    "question": "Where is req.accepts() defined?",
+    "expected_files": [
+      "lib/request.js"
+    ],
+    "marker": "req.accepts = function"
+  },
+  {
+    "id": "Q6",
+    "type": "lookup",
+    "question": "Where is res.download() defined?",
+    "expected_files": [
+      "lib/response.js"
+    ],
+    "marker": "res.download = function download"
+  },
+  {
+    "id": "Q7",
+    "type": "lookup",
+    "question": "Where is app.param() defined?",
+    "expected_files": [
+      "lib/application.js"
+    ],
+    "marker": "app.param = function param"
+  },
+  {
+    "id": "Q8",
+    "type": "lookup",
+    "question": "Where is res.attachment() defined?",
+    "expected_files": [
+      "lib/response.js"
+    ],
+    "marker": "res.attachment = function attachment"
+  },
+  {
+    "id": "Q9",
+    "type": "behavior",
+    "question": "How does res.jsonp() make the callback name safe before putting it in the response?",
+    "expected_files": [
+      "lib/response.js"
+    ],
+    "marker": "restrict callback charset"
+  },
+  {
+    "id": "Q10",
+    "type": "behavior",
+    "question": "What does res.format() do when nothing matches the Accept header and there is no default handler?",
+    "expected_files": [
+      "lib/response.js"
+    ],
+    "marker": "createError(406"
+  },
+  {
+    "id": "Q11",
+    "type": "behavior",
+    "question": "How does res.clearCookie() make the browser drop a cookie?",
+    "expected_files": [
+      "lib/response.js"
+    ],
+    "marker": "Force cookie expiration"
+  },
+  {
+    "id": "Q12",
+    "type": "behavior",
+    "question": "How does req.hostname handle a host header that is an IPv6 address with a port?",
+    "expected_files": [
+      "lib/request.js"
+    ],
+    "marker": "IPv6 literal support"
+  },
+  {
+    "id": "Q13",
+    "type": "behavior",
+    "question": "How does req.fresh decide whether the client's cached copy is still valid?",
+    "expected_files": [
+      "lib/request.js"
+    ],
+    "marker": "fresh(this.headers"
+  },
+  {
+    "id": "Q14",
+    "type": "behavior",
+    "question": "How does res.links() build the Link header?",
+    "expected_files": [
+      "lib/response.js"
+    ],
+    "marker": "res.links = function"
+  },
+  {
+    "id": "Q15",
+    "type": "behavior",
+    "question": "Where and how does Express send the X-Powered-By header?",
+    "expected_files": [
+      "lib/application.js"
+    ],
+    "marker": "res.setHeader('X-Powered-By', 'Express')"
+  },
+  {
+    "id": "Q16",
+    "type": "behavior",
+    "question": "How does res.vary() add a field to the Vary header?",
+    "expected_files": [
+      "lib/response.js"
+    ],
+    "marker": "res.vary = function"
+  },
+  {
+    "id": "Q17",
+    "type": "multi",
+    "question": "How is the 'query parser' setting turned into a function that parses the query string?",
+    "expected_files": [
+      "lib/application.js",
+      "lib/utils.js"
+    ],
+    "marker": "compileQueryParser"
+  },
+  {
+    "id": "Q18",
+    "type": "multi",
+    "question": "How does the 'subdomain offset' setting affect req.subdomains, and what is its default value?",
+    "expected_files": [
+      "lib/request.js",
+      "lib/application.js"
+    ],
+    "marker": "subdomain offset"
+  },
+  {
+    "id": "Q19",
+    "type": "multi",
+    "question": "How does res.format() use req.accepts() to pick which handler to run?",
+    "expected_files": [
+      "lib/response.js",
+      "lib/request.js"
+    ],
+    "marker": "req.accepts"
+  },
+  {
+    "id": "Q20",
+    "type": "multi",
+    "question": "How does res.jsonp() know which query parameter holds the callback name, and where is the default set?",
+    "expected_files": [
+      "lib/response.js",
+      "lib/application.js"
+    ],
+    "marker": "jsonp callback name"
+  }
+]
