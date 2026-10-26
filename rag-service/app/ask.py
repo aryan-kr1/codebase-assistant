@@ -60,7 +60,7 @@ def retrieve(repo: str, question: str, k: int = 5):
         persist_directory=str(DB_DIR),
     )
 
-    search_q = rewrite_query(question)
+    search_q = rewrite_query(question) if os.getenv("REWRITE", "0") == "1" else question
 
     # vector top 20
     vec_docs = store.similarity_search(search_q, k=POOL)

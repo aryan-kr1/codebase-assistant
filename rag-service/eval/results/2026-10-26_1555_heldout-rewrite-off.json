@@ -1,0 +1,332 @@
+{
+  "label": "heldout-rewrite-off",
+  "repo": "express",
+  "k": 5,
+  "chunk_size": 1000,
+  "chunk_overlap": 150,
+  "hit_at_k": 0.95,
+  "file_only_hit_at_k": 1.0,
+  "mrr": 0.8166666666666667,
+  "rows": [
+    {
+      "id": "Q1",
+      "type": "lookup",
+      "question": "Where is res.sendFile() defined?",
+      "hit": true,
+      "rank": 2,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/response.js:356-373",
+        "lib/response.js:375-410",
+        "lib/response.js:484-514",
+        "lib/response.js:407-435",
+        "lib/response.js:334-358"
+      ]
+    },
+    {
+      "id": "Q2",
+      "type": "lookup",
+      "question": "Where is res.status() defined?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/response.js:65-96",
+        "lib/response.js:797-839",
+        "lib/request.js:455-499",
+        "lib/response.js:545-572",
+        "lib/response.js:38-63"
+      ]
+    },
+    {
+      "id": "Q3",
+      "type": "lookup",
+      "question": "Where is app.set() implemented?",
+      "hit": true,
+      "rank": 3,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/application.js:420-476",
+        "lib/application.js:117-150",
+        "lib/application.js:328-371",
+        "lib/application.js:152-192",
+        "lib/application.js:80-115"
+      ]
+    },
+    {
+      "id": "Q4",
+      "type": "lookup",
+      "question": "Where is app.engine() defined?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/application.js:294-334",
+        "lib/application.js:260-283",
+        "lib/application.js:117-150",
+        "lib/application.js:522-556",
+        "lib/request.js:357-386"
+      ]
+    },
+    {
+      "id": "Q5",
+      "type": "lookup",
+      "question": "Where is req.accepts() defined?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/request.js:127-143",
+        "lib/request.js:111-125",
+        "lib/request.js:171-187",
+        "lib/request.js:140-169",
+        "lib/response.js:574-618"
+      ]
+    },
+    {
+      "id": "Q6",
+      "type": "lookup",
+      "question": "Where is res.download() defined?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/response.js:437-462",
+        "lib/response.js:356-373",
+        "lib/response.js:646-683",
+        "lib/response.js:545-572",
+        "lib/response.js:375-410"
+      ]
+    },
+    {
+      "id": "Q7",
+      "type": "lookup",
+      "question": "Where is app.param() defined?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/application.js:294-334",
+        "lib/application.js:328-371",
+        "lib/response.js:356-373",
+        "lib/application.js:420-476",
+        "lib/application.js:478-520"
+      ]
+    },
+    {
+      "id": "Q8",
+      "type": "lookup",
+      "question": "Where is res.attachment() defined?",
+      "hit": true,
+      "rank": 2,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/response.js:407-435",
+        "lib/response.js:574-618",
+        "lib/response.js:356-373",
+        "lib/response.js:437-462",
+        "lib/response.js:545-572"
+      ]
+    },
+    {
+      "id": "Q9",
+      "type": "behavior",
+      "question": "How does res.jsonp() make the callback name safe before putting it in the response?",
+      "hit": false,
+      "rank": null,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/response.js:236-271",
+        "lib/response.js:302-332",
+        "lib/response.js:334-358",
+        "lib/response.js:878-921",
+        "lib/response.js:516-550"
+      ]
+    },
+    {
+      "id": "Q10",
+      "type": "behavior",
+      "question": "What does res.format() do when nothing matches the Accept header and there is no default handler?",
+      "hit": true,
+      "rank": 2,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/response.js:516-550",
+        "lib/response.js:574-618",
+        "lib/response.js:545-572",
+        "lib/response.js:334-358",
+        "lib/response.js:646-683"
+      ]
+    },
+    {
+      "id": "Q11",
+      "type": "behavior",
+      "question": "How does res.clearCookie() make the browser drop a cookie?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/response.js:685-722",
+        "lib/response.js:721-759",
+        "lib/response.js:615-647",
+        "lib/response.js:797-839",
+        "lib/response.js:334-358"
+      ]
+    },
+    {
+      "id": "Q12",
+      "type": "behavior",
+      "question": "How does req.hostname handle a host header that is an IPv6 address with a port?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/request.js:418-458",
+        "lib/request.js:383-420",
+        "lib/request.js:357-386",
+        "lib/application.js:152-192",
+        "lib/request.js:30-83"
+      ]
+    },
+    {
+      "id": "Q13",
+      "type": "behavior",
+      "question": "How does req.fresh decide whether the client's cached copy is still valid?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/request.js:455-499",
+        "lib/request.js:497-527",
+        "lib/response.js:356-373",
+        "lib/response.js:878-921",
+        "lib/request.js:30-83"
+      ]
+    },
+    {
+      "id": "Q14",
+      "type": "behavior",
+      "question": "How does res.links() build the Link header?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/response.js:98-138",
+        "lib/response.js:615-647",
+        "lib/response.js:65-96",
+        "lib/response.js:334-358",
+        "lib/response.js:646-683"
+      ]
+    },
+    {
+      "id": "Q15",
+      "type": "behavior",
+      "question": "Where and how does Express send the X-Powered-By header?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/application.js:152-192",
+        "lib/application.js:80-115",
+        "lib/response.js:334-358",
+        "lib/response.js:545-572",
+        "lib/response.js:484-514"
+      ]
+    },
+    {
+      "id": "Q16",
+      "type": "behavior",
+      "question": "How does res.vary() add a field to the Vary header?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/response.js:878-921",
+        "lib/response.js:838-882",
+        "lib/response.js:646-683",
+        "lib/response.js:334-358",
+        "lib/response.js:615-647"
+      ]
+    },
+    {
+      "id": "Q17",
+      "type": "multi",
+      "question": "How is the 'query parser' setting turned into a function that parses the query string?",
+      "hit": true,
+      "rank": 2,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/request.js:214-241",
+        "lib/utils.js:162-205",
+        "lib/utils.js:249-271",
+        "lib/request.js:238-281",
+        "lib/application.js:80-115"
+      ]
+    },
+    {
+      "id": "Q18",
+      "type": "multi",
+      "question": "How does the 'subdomain offset' setting affect req.subdomains, and what is its default value?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/request.js:357-386",
+        "lib/request.js:383-420",
+        "lib/application.js:80-115",
+        "lib/application.js:152-192",
+        "lib/request.js:418-458"
+      ]
+    },
+    {
+      "id": "Q19",
+      "type": "multi",
+      "question": "How does res.format() use req.accepts() to pick which handler to run?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/response.js:516-550",
+        "lib/response.js:574-618",
+        "lib/application.js:152-192",
+        "lib/request.js:127-143",
+        "lib/request.js:140-169"
+      ]
+    },
+    {
+      "id": "Q20",
+      "type": "multi",
+      "question": "How does res.jsonp() know which query parameter holds the callback name, and where is the default set?",
+      "hit": true,
+      "rank": 1,
+      "file_only_hit": true,
+      "all_files_found": true,
+      "retrieved": [
+        "lib/response.js:236-271",
+        "lib/application.js:117-150",
+        "lib/response.js:545-572",
+        "lib/response.js:334-358",
+        "lib/response.js:516-550"
+      ]
+    }
+  ]
+}
