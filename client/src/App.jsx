@@ -1,21 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
 export default function App() {
   const [chats, setChats] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState("");
+  const bottomRef = useRef(null);
 
-  // Load the chat list once
-  useEffect(() => {
-    fetch("/api/chats")
+  function loadChats() {
+    return fetch("/api/chats")
       .then((r) => {
         if (!r.ok) throw new Error();
         return r.json();
       })
       .then(setChats)
       .catch(() => setError("Could not load chats."));
+  }
+
+  // Load the chat list once
+  useEffect(() => {
+    loadChats();
   }, []);
 
   // Load messages whenever a different chat is selected
@@ -39,7 +46,98 @@ export default function App() {
     };
   }, [activeId]);
 
+  // Keep the newest text in view while the answer streams
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   const activeChat = chats.find((c) => c._id === activeId);
+
+  // Update one message by id
+  function patchMessage(id, patch) {
+    setMessages((prev) =>
+      prev.map((m) => (m._id === id ? { ...m, ...patch } : m)),
+    );
+  }
+
+  // Handle one SSE event from the stream
+  function handleEvent(raw, assistantId, state) {
+    let event = "message";
+    let data = "";
+    for (const line of raw.split("\n")) {
+      if (line.startsWith("event: ")) event = line.slice(7);
+      else if (line.startsWith("data: ")) data += line.slice(6);
+    }
+    let value;
+    try {
+      value = JSON.parse(data);
+    } catch {
+      return;
+    }
+
+    if (event === "token") {
+      state.text += value;
+      patchMessage(assistantId, { content: state.text });
+    } else if (event === "citations") {
+      patchMessage(assistantId, { citations: value });
+    } else if (event === "error") {
+      setError(typeof value === "string" ? value : "Something went wrong.");
+    }
+  }
+
+  async function sendQuestion(e) {
+    e.preventDefault();
+    const question = input.trim();
+    if (!question || !activeId || streaming) return;
+
+    setError("");
+    setInput("");
+    setStreaming(true);
+
+    const stamp = Date.now();
+    const userId = `tmp-user-${stamp}`;
+    const assistantId = `tmp-assistant-${stamp}`;
+    setMessages((prev) => [
+      ...prev,
+      { _id: userId, role: "user", content: question, citations: [] },
+      { _id: assistantId, role: "assistant", content: "", citations: [] },
+    ]);
+
+    try {
+      const res = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId: activeId, question }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Request failed.");
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      const state = { text: "" };
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let i;
+        while ((i = buffer.indexOf("\n\n")) !== -1) {
+          handleEvent(buffer.slice(0, i), assistantId, state);
+          buffer = buffer.slice(i + 2);
+        }
+      }
+    } catch (err) {
+      setError(err.message || "Request failed.");
+    } finally {
+      setStreaming(false);
+      loadChats(); // refresh titles and order
+    }
+  }
 
   return (
     <div className="app">
@@ -59,6 +157,7 @@ export default function App() {
             <button
               key={chat._id}
               className={`chat-item ${chat._id === activeId ? "active" : ""}`}
+              disabled={streaming}
               onClick={() => {
                 setError("");
                 setActiveId(chat._id);
@@ -82,7 +181,7 @@ export default function App() {
           )}
           {messages.map((m) => (
             <div key={m._id} className={`message ${m.role}`}>
-              {m.content}
+              {m.content || (streaming && m.role === "assistant" ? "…" : "")}
               {m.citations?.length > 0 && (
                 <div className="sources">
                   Sources:{" "}
@@ -93,12 +192,26 @@ export default function App() {
               )}
             </div>
           ))}
+          <div ref={bottomRef} />
         </div>
 
-        {/* Placeholder: wired up in the next step */}
-        <form className="ask-form" onSubmit={(e) => e.preventDefault()}>
-          <textarea rows={2} placeholder="Ask about this repo..." disabled />
-          <button disabled>Send</button>
+        <form className="ask-form" onSubmit={sendQuestion}>
+          <textarea
+            rows={2}
+            placeholder="Ask about this repo..."
+            value={input}
+            disabled={!activeChat || streaming}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendQuestion(e);
+              }
+            }}
+          />
+          <button disabled={!activeChat || streaming || !input.trim()}>
+            Send
+          </button>
         </form>
       </main>
     </div>
