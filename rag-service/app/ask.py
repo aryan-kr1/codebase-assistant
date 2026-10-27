@@ -19,7 +19,12 @@ load_dotenv()
 
 PROMPT = ChatPromptTemplate.from_template(
     """You answer questions about a codebase using ONLY the context below.
-Cite sources inline like [path/to/file.js:10-42]. If the context is not enough, say so.
+Cite sources inline in exactly this form: [path/to/file.js:10-42]
+Rules for citations:
+- Use square brackets and a plain hyphen (-) between the line numbers.
+- Never use a non-breaking hyphen, en dash, or any other bracket character.
+- Copy the path and line numbers exactly as they appear in the context headers.
+If the context is not enough, say so.
 
 Context:
 {context}
