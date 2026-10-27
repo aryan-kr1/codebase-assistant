@@ -53,10 +53,10 @@ def rewrite_query(question: str) -> str:
     return chain.invoke({"question": question}).strip()
 
 
-def retrieve(repo: str, question: str, k: int = 5):
+def retrieve(repo: str, question: str, k: int = 5, embeddings=None, reranker=None):
     store = Chroma(
         collection_name=repo,
-        embedding_function=get_embeddings(),
+        embedding_function=embeddings or get_embeddings(),
         persist_directory=str(DB_DIR),
     )
 
@@ -89,7 +89,7 @@ def retrieve(repo: str, question: str, k: int = 5):
     candidates = [by_key[key] for key in best]
 
     # rerank against the ORIGINAL question
-    reranker = CrossEncoder(RERANK_MODEL)
+    reranker = reranker or CrossEncoder(RERANK_MODEL)
     scores = reranker.predict([(question, d.page_content) for d in candidates])
     order = sorted(range(len(candidates)), key=lambda i: scores[i], reverse=True)
     return [candidates[i] for i in order[:k]]

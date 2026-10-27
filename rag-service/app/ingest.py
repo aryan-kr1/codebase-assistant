@@ -64,26 +64,28 @@ def chunk_repo(root):
     return chunks
 
 
-def main(url: str):
+def ingest(url: str, embeddings=None):
+    embeddings = embeddings or get_embeddings()
     name, root = clone(url)
     chunks = chunk_repo(root)
     print(f"{name}: {len(chunks)} chunks")
 
     store = Chroma(
         collection_name=name,
-        embedding_function=get_embeddings(),
+        embedding_function=embeddings,
         persist_directory=str(DB_DIR),
     )
     store.delete_collection()  # re-index from scratch
     store = Chroma(
         collection_name=name,
-        embedding_function=get_embeddings(),
+        embedding_function=embeddings,
         persist_directory=str(DB_DIR),
     )
     for i in range(0, len(chunks), 500):
         store.add_documents(chunks[i : i + 500])
     print("Done. Indexed as:", name)
+    return name, len(chunks)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    ingest(sys.argv[1])
