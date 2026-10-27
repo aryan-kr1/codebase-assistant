@@ -3,6 +3,8 @@ const express = require("express");
 const cors = require("cors");
 const { Readable } = require("node:stream");
 
+const connectDB = require("./db");
+
 const app = express();
 const PORT = process.env.PORT || 4000;
 const RAG_URL = process.env.RAG_URL || "http://localhost:8000";
@@ -84,6 +86,8 @@ app.post("/api/ask", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+connectDB().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
 });
