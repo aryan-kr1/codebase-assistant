@@ -18,15 +18,74 @@ export default function App() {
   const bottomRef = useRef(null);
   const [snippet, setSnippet] = useState(null); // {file, start, end, code, loading, error}
   const codeReq = useRef(0); // ignores late responses from older clicks
+  const [user, setUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authMode, setAuthMode] = useState("login"); // "login" | "register"
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+
+  // Clear everything and show the login screen
+  function resetSession() {
+    setUser(null);
+    setChats([]);
+    setActiveId(null);
+    setMessages([]);
+    setSnippet(null);
+    setJobId(null);
+    setJobStatus("");
+    setStreaming(false);
+    setInput("");
+    setError("");
+  }
+
+  // fetch wrapper: a 401 sends the user back to the login screen
+  async function apiFetch(url, options) {
+    const res = await fetch(url, options);
+    if (res.status === 401) {
+      resetSession();
+      throw new Error("Please log in again.");
+    }
+    return res;
+  }
 
   function loadChats() {
-    return fetch("/api/chats")
+    return apiFetch("/api/chats")
       .then((r) => {
         if (!r.ok) throw new Error();
         return r.json();
       })
       .then(setChats)
       .catch(() => setError("Could not load chats."));
+  }
+
+  async function submitAuth(e) {
+    e.preventDefault();
+    if (authBusy) return;
+    setAuthBusy(true);
+    setAuthError("");
+    try {
+      const res = await fetch(`/api/auth/${authMode}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Something went wrong.");
+      setError("");
+      setPassword("");
+      setUser(body);
+    } catch (err) {
+      setAuthError(err.message || "Something went wrong.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    resetSession();
   }
 
   async function startIndex(e) {
@@ -37,7 +96,7 @@ export default function App() {
     setError("");
     setJobStatus("starting");
     try {
-      const res = await fetch("/api/index", {
+      const res = await apiFetch("/api/index", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
@@ -55,10 +114,19 @@ export default function App() {
     }
   }
 
-  // Load the chat list once
+  // Check if the user is already logged in
   useEffect(() => {
-    loadChats();
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((u) => setUser(u))
+      .catch(() => {})
+      .finally(() => setAuthChecked(true));
   }, []);
+
+  // Load the chat list once logged in
+  useEffect(() => {
+    if (user) loadChats();
+  }, [user]);
 
   // Load messages whenever a different chat is selected
   useEffect(() => {
@@ -69,7 +137,7 @@ export default function App() {
 
     let cancelled = false;
     setMessages([]);
-    fetch(`/api/chats/${activeId}/messages`)
+    apiFetch(`/api/chats/${activeId}/messages`)
       .then((r) => {
         if (!r.ok) throw new Error();
         return r.json();
@@ -92,7 +160,7 @@ export default function App() {
 
     const timer = setInterval(async () => {
       try {
-        const res = await fetch(`/api/index/${jobId}`);
+        const res = await apiFetch(`/api/index/${jobId}`);
         if (!res.ok) throw new Error();
         const job = await res.json();
         if (stopped) return;
@@ -106,7 +174,7 @@ export default function App() {
         } else if (job.status === "done") {
           stopped = true;
           clearInterval(timer);
-          const chatRes = await fetch("/api/chats", {
+          const chatRes = await apiFetch("/api/chats", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ repo: job.repo }),
@@ -151,7 +219,7 @@ export default function App() {
         start: String(start),
         end: String(end),
       });
-      const res = await fetch(`/api/chats/${activeId}/code?${params}`);
+      const res = await apiFetch(`/api/chats/${activeId}/code?${params}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
       if (req !== codeReq.current) return;
@@ -254,7 +322,7 @@ export default function App() {
     ]);
 
     try {
-      const res = await fetch("/api/ask", {
+      const res = await apiFetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chatId: activeId, question }),
@@ -289,10 +357,56 @@ export default function App() {
     }
   }
 
+  if (!authChecked) return <div className="auth-page">Loading…</div>;
+
+  if (!user) {
+    return (
+      <div className="auth-page">
+        <form className="auth-form" onSubmit={submitAuth}>
+          <h2>Codebase Assistant</h2>
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <input
+            type="password"
+            placeholder="Password (8+ characters)"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          {authError && <div className="error">{authError}</div>}
+          <button disabled={authBusy || !email.trim() || !password}>
+            {authMode === "login" ? "Log in" : "Create account"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAuthError("");
+              setAuthMode(authMode === "login" ? "register" : "login");
+            }}
+          >
+            {authMode === "login"
+              ? "Need an account? Register"
+              : "Have an account? Log in"}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <aside className="sidebar">
         <h2>Codebase Assistant</h2>
+
+        <div className="user-row">
+          <small>{user.email}</small>
+          <button onClick={logout} disabled={streaming}>
+            Log out
+          </button>
+        </div>
 
         <form className="repo-form" onSubmit={startIndex}>
           <input
