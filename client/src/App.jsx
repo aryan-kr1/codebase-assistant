@@ -8,6 +8,10 @@ export default function App() {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState("");
+  const [repoUrl, setRepoUrl] = useState("");
+  const [jobId, setJobId] = useState(null);
+  const [jobStatus, setJobStatus] = useState(""); // "" | "starting" | "running"
+  const indexing = jobStatus !== "";
   const bottomRef = useRef(null);
 
   function loadChats() {
@@ -18,6 +22,32 @@ export default function App() {
       })
       .then(setChats)
       .catch(() => setError("Could not load chats."));
+  }
+
+  async function startIndex(e) {
+    e.preventDefault();
+    const url = repoUrl.trim();
+    if (!url || indexing) return;
+
+    setError("");
+    setJobStatus("starting");
+    try {
+      const res = await fetch("/api/index", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Could not start indexing.");
+      }
+      const data = await res.json();
+      setJobId(data.job_id);
+      setJobStatus("running");
+    } catch (err) {
+      setJobStatus("");
+      setError(err.message || "Could not start indexing.");
+    }
   }
 
   // Load the chat list once
@@ -45,6 +75,55 @@ export default function App() {
       cancelled = true;
     };
   }, [activeId]);
+
+  // Poll the indexing job every 2 seconds
+  useEffect(() => {
+    if (!jobId) return;
+    let stopped = false;
+
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/index/${jobId}`);
+        if (!res.ok) throw new Error();
+        const job = await res.json();
+        if (stopped) return;
+
+        if (job.status === "failed") {
+          stopped = true;
+          clearInterval(timer);
+          setError(job.error || "Indexing failed.");
+          setJobId(null);
+          setJobStatus("");
+        } else if (job.status === "done") {
+          stopped = true;
+          clearInterval(timer);
+          const chatRes = await fetch("/api/chats", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ repo: job.repo }),
+          });
+          if (!chatRes.ok) throw new Error();
+          const chat = await chatRes.json();
+          await loadChats();
+          setActiveId(chat._id);
+          setRepoUrl("");
+          setJobId(null);
+          setJobStatus("");
+        }
+      } catch {
+        stopped = true;
+        clearInterval(timer);
+        setError("Something went wrong while indexing.");
+        setJobId(null);
+        setJobStatus("");
+      }
+    }, 2000);
+
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [jobId]);
 
   // Keep the newest text in view while the answer streams
   useEffect(() => {
@@ -144,11 +223,18 @@ export default function App() {
       <aside className="sidebar">
         <h2>Codebase Assistant</h2>
 
-        {/* Placeholder: wired up in the next step */}
-        <form className="repo-form" onSubmit={(e) => e.preventDefault()}>
-          <input placeholder="https://github.com/owner/repo" disabled />
-          <button disabled>Index repo</button>
+        <form className="repo-form" onSubmit={startIndex}>
+          <input
+            placeholder="https://github.com/owner/repo"
+            value={repoUrl}
+            disabled={indexing}
+            onChange={(e) => setRepoUrl(e.target.value)}
+          />
+          <button disabled={indexing || !repoUrl.trim()}>
+            {indexing ? "Indexing…" : "Index repo"}
+          </button>
         </form>
+        {indexing && <div>Indexing… this can take a minute.</div>}
 
         {error && <div className="error">{error}</div>}
 
