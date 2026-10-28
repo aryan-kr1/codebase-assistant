@@ -1,4 +1,9 @@
 require("dotenv").config();
+if (!process.env.JWT_SECRET) {
+  console.error("JWT_SECRET is missing in server/.env");
+  process.exit(1);
+}
+
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -8,6 +13,8 @@ const { rateLimit } = require("express-rate-limit");
 const connectDB = require("./db");
 const Chat = require("./models/Chat");
 const Message = require("./models/Message");
+const cookieParser = require("cookie-parser");
+const { router: authRouter, requireAuth } = require("./auth");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -15,6 +22,8 @@ const RAG_URL = process.env.RAG_URL || "http://localhost:8000";
 
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
+app.use("/api/auth", authRouter);
 
 // Limits are per IP and kept in memory (reset when the server restarts)
 const askLimiter = rateLimit({
@@ -49,7 +58,7 @@ async function forwardJson(res, path, options) {
   }
 }
 
-app.post("/api/index", indexLimiter, (req, res) => {
+app.post("/api/index", requireAuth, indexLimiter, (req, res) => {
   forwardJson(res, "/index", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -57,37 +66,41 @@ app.post("/api/index", indexLimiter, (req, res) => {
   });
 });
 
-app.get("/api/index/:jobId", (req, res) => {
+app.get("/api/index/:jobId", requireAuth, (req, res) => {
   forwardJson(res, `/index/${encodeURIComponent(req.params.jobId)}`);
 });
 
 // ---- Chats ----
 
-app.post("/api/chats", async (req, res) => {
+app.post("/api/chats", requireAuth, async (req, res) => {
   const repo = req.body?.repo;
   if (!repo || typeof repo !== "string") {
     return res.status(400).json({ error: "repo is required" });
   }
-  const chat = await Chat.create({ repo });
+  const chat = await Chat.create({ repo, user: req.userId });
   res.status(201).json(chat);
 });
 
-app.get("/api/chats", async (req, res) => {
-  const chats = await Chat.find().sort({ updatedAt: -1 });
+app.get("/api/chats", requireAuth, async (req, res) => {
+  const chats = await Chat.find({ user: req.userId }).sort({ updatedAt: -1 });
   res.json(chats);
 });
 
-app.get("/api/chats/:id/messages", async (req, res) => {
+app.get("/api/chats/:id/messages", requireAuth, async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ error: "Invalid chat id" });
   }
-  const messages = await Message.find({ chat: req.params.id }).sort({
+  const chat = await Chat.findOne({ _id: req.params.id, user: req.userId });
+  if (!chat) {
+    return res.status(404).json({ error: "Chat not found" });
+  }
+  const messages = await Message.find({ chat: chat._id }).sort({
     createdAt: 1,
   });
   res.json(messages);
 });
 
-app.get("/api/chats/:id/code", async (req, res) => {
+app.get("/api/chats/:id/code", requireAuth, async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ error: "Invalid chat id" });
   }
@@ -95,7 +108,7 @@ app.get("/api/chats/:id/code", async (req, res) => {
   if (!file || !start || !end) {
     return res.status(400).json({ error: "file, start and end are required" });
   }
-  const chat = await Chat.findById(req.params.id);
+  const chat = await Chat.findOne({ _id: req.params.id, user: req.userId });
   if (!chat) {
     return res.status(404).json({ error: "Chat not found" });
   }
@@ -110,7 +123,7 @@ app.get("/api/chats/:id/code", async (req, res) => {
 
 // ---- Ask: stream the answer to the client and save it when it finishes ----
 
-app.post("/api/ask", askLimiter, async (req, res) => {
+app.post("/api/ask", requireAuth, askLimiter, async (req, res) => {
   const { chatId, question } = req.body || {};
   if (!chatId || !question) {
     return res.status(400).json({ error: "chatId and question are required" });
@@ -119,7 +132,7 @@ app.post("/api/ask", askLimiter, async (req, res) => {
     return res.status(400).json({ error: "Invalid chatId" });
   }
 
-  const chat = await Chat.findById(chatId);
+  const chat = await Chat.findOne({ _id: chatId, user: req.userId });
   if (!chat) {
     return res.status(404).json({ error: "Chat not found" });
   }
