@@ -1,3 +1,8 @@
+import json
+import os
+
+import chromadb
+
 import shutil
 import subprocess
 import sys
@@ -17,6 +22,51 @@ from app.config import (
     get_embeddings,
     repo_name_from_url,
 )
+
+STATE_FILE = REPOS_DIR.parent / "index_state.json"  # data/index_state.json
+
+
+def load_state():
+    try:
+        return json.loads(STATE_FILE.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_state(state):
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STATE_FILE.write_text(json.dumps(state, indent=2))
+
+
+def remote_head(url: str) -> str:
+    # Latest commit on the remote, without downloading the repo
+    out = subprocess.run(
+        ["git", "ls-remote", url, "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+    ).stdout.split()
+    if not out:
+        raise RuntimeError(f"No HEAD found for {url}")
+    return out[0]
+
+
+def local_head(root) -> str:
+    return subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def indexed_count(name: str) -> int:
+    try:
+        client = chromadb.PersistentClient(path=str(DB_DIR))
+        return client.get_collection(name).count()
+    except Exception:
+        return 0
 
 
 def clone(url: str):
@@ -64,9 +114,24 @@ def chunk_repo(root):
     return chunks
 
 
-def ingest(url: str, embeddings=None):
+def ingest(url: str, embeddings=None, force: bool = False):
+    name = repo_name_from_url(url)
+    state = load_state()
+
+    # Skip everything if the remote has not changed since the last index
+    if not force and state.get(name) == remote_head(url):
+        count = indexed_count(name)
+        if count > 0 and (REPOS_DIR / name).exists():
+            print(f"{name}: unchanged, skipping ({count} chunks)")
+            return name, count
+
+    # Forget the old hash first, so a failed rebuild is never marked as up to date
+    state.pop(name, None)
+    save_state(state)
+
     embeddings = embeddings or get_embeddings()
     name, root = clone(url)
+    head = local_head(root)
     chunks = chunk_repo(root)
     print(f"{name}: {len(chunks)} chunks")
 
@@ -83,9 +148,12 @@ def ingest(url: str, embeddings=None):
     )
     for i in range(0, len(chunks), 500):
         store.add_documents(chunks[i : i + 500])
+
+    state[name] = head
+    save_state(state)
     print("Done. Indexed as:", name)
     return name, len(chunks)
 
 
 if __name__ == "__main__":
-    ingest(sys.argv[1])
+    ingest(sys.argv[1], force="--force" in sys.argv)
