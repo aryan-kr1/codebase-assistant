@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sentence_transformers import CrossEncoder
 
 import json
+import chromadb
 import logging
 import os
 
@@ -27,7 +28,7 @@ from app.ask import (
 
 logger = logging.getLogger(__name__)
 
-from app.config import REPOS_DIR, get_embeddings
+from app.config import DB_DIR, REPOS_DIR, get_embeddings
 from app.ingest import ingest
 
 jobs = {}  # job_id -> {"status", "url", "repo", "chunks", "error"}
@@ -114,6 +115,16 @@ def sse(event: str, data) -> str:
 def ask(req: AskRequest):
     def stream():
         try:
+
+            try:
+                client = chromadb.PersistentClient(path=str(DB_DIR))
+                count = client.get_collection(req.repo).count()
+            except Exception:
+                count = 0
+            if count == 0:
+                yield sse("error", "This repo isn't indexed yet. Index it first.")
+                return
+
             history = [m.model_dump() for m in req.history]
             search_q = req.question
             if history:
