@@ -1,4 +1,5 @@
 import uuid
+import subprocess
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
@@ -43,8 +44,15 @@ def run_index(job_id: str, url: str):
     try:
         repo, chunks = ingest(url, app.state.embeddings)
         jobs[job_id].update(status="done", repo=repo, chunks=chunks)
-    except Exception as e:
-        jobs[job_id].update(status="failed", error=str(e))
+    except subprocess.CalledProcessError:
+        logger.exception("clone failed for %s", url)
+        jobs[job_id].update(
+            status="failed",
+            error="Could not clone the repository. Check the URL and that the repo is public.",
+        )
+    except Exception:
+        logger.exception("indexing failed for %s", url)
+        jobs[job_id].update(status="failed", error="Indexing failed.")
 
 
 @app.get("/health")
@@ -54,6 +62,10 @@ def health():
 
 @app.post("/index")
 def start_index(req: IndexRequest, background_tasks: BackgroundTasks):
+    if not req.url.startswith("https://github.com/"):
+        raise HTTPException(
+            status_code=400, detail="Only https://github.com/ URLs are supported."
+        )
     job_id = uuid.uuid4().hex
     jobs[job_id] = {
         "status": "queued",
