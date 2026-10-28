@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
+// Matches [path/to/file.js:10-42]; accepts -, non-breaking hyphen, en dash, em dash
+const CITATION_RE = /\[([^\[\]:\s]+):(\d+)\s*[-\u2011\u2013\u2014]\s*(\d+)\]/g;
+
 export default function App() {
   const [chats, setChats] = useState([]);
   const [activeId, setActiveId] = useState(null);
@@ -13,6 +16,8 @@ export default function App() {
   const [jobStatus, setJobStatus] = useState(""); // "" | "starting" | "running"
   const indexing = jobStatus !== "";
   const bottomRef = useRef(null);
+  const [snippet, setSnippet] = useState(null); // {file, start, end, code, loading, error}
+  const codeReq = useRef(0); // ignores late responses from older clicks
 
   function loadChats() {
     return fetch("/api/chats")
@@ -58,6 +63,10 @@ export default function App() {
   // Load messages whenever a different chat is selected
   useEffect(() => {
     if (!activeId) return;
+
+    setSnippet(null);
+    codeReq.current++;
+
     let cancelled = false;
     setMessages([]);
     fetch(`/api/chats/${activeId}/messages`)
@@ -131,6 +140,68 @@ export default function App() {
   }, [messages]);
 
   const activeChat = chats.find((c) => c._id === activeId);
+
+  async function openCode(file, start, end) {
+    if (!activeId) return;
+    const req = ++codeReq.current;
+    setSnippet({ file, start, end, code: "", loading: true, error: "" });
+    try {
+      const params = new URLSearchParams({
+        file,
+        start: String(start),
+        end: String(end),
+      });
+      const res = await fetch(`/api/chats/${activeId}/code?${params}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (req !== codeReq.current) return;
+      setSnippet({
+        file,
+        start: data.start_line,
+        end: data.end_line,
+        code: data.code,
+        loading: false,
+        error: "",
+      });
+    } catch {
+      if (req !== codeReq.current) return;
+      setSnippet({
+        file,
+        start,
+        end,
+        code: "",
+        loading: false,
+        error: "Could not load that code.",
+      });
+    }
+  }
+
+  function closeCode() {
+    codeReq.current++;
+    setSnippet(null);
+  }
+
+  // Split answer text into plain text and clickable citations
+  function renderContent(text) {
+    const parts = [];
+    let last = 0;
+    for (const m of text.matchAll(CITATION_RE)) {
+      const [full, file, start, end] = m;
+      if (m.index > last) parts.push(text.slice(last, m.index));
+      parts.push(
+        <button
+          key={m.index}
+          className="cite"
+          onClick={() => openCode(file, Number(start), Number(end))}
+        >
+          {file}:{start}-{end}
+        </button>,
+      );
+      last = m.index + full.length;
+    }
+    if (last < text.length) parts.push(text.slice(last));
+    return parts;
+  }
 
   // Update one message by id
   function patchMessage(id, patch) {
@@ -267,19 +338,47 @@ export default function App() {
           )}
           {messages.map((m) => (
             <div key={m._id} className={`message ${m.role}`}>
-              {m.content || (streaming && m.role === "assistant" ? "…" : "")}
+              {m.content
+                ? renderContent(m.content)
+                : streaming && m.role === "assistant"
+                  ? "…"
+                  : ""}
               {m.citations?.length > 0 && (
                 <div className="sources">
-                  Sources:{" "}
-                  {m.citations
-                    .map((c) => `${c.file}:${c.start_line}-${c.end_line}`)
-                    .join(", ")}
+                  Sources:
+                  {m.citations.map((c, i) => (
+                    <button
+                      key={i}
+                      className="cite"
+                      onClick={() => openCode(c.file, c.start_line, c.end_line)}
+                    >
+                      {c.file}:{c.start_line}-{c.end_line}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
           ))}
           <div ref={bottomRef} />
         </div>
+
+        {snippet && (
+          <div className="code-panel">
+            <div className="code-header">
+              <span>
+                {snippet.file}:{snippet.start}-{snippet.end}
+              </span>
+              <button onClick={closeCode}>Close</button>
+            </div>
+            {snippet.loading ? (
+              <div className="code-note">Loading…</div>
+            ) : snippet.error ? (
+              <div className="code-note error">{snippet.error}</div>
+            ) : (
+              <pre className="code-body">{snippet.code}</pre>
+            )}
+          </div>
+        )}
 
         <form className="ask-form" onSubmit={sendQuestion}>
           <textarea
