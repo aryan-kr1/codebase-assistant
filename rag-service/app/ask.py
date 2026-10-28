@@ -29,7 +29,7 @@ If the context is not enough, say so.
 Context:
 {context}
 
-Question: {question}"""
+{history}Question: {question}"""
 )
 
 
@@ -56,6 +56,36 @@ def rewrite_query(question: str) -> str:
     )
     chain = REWRITE_PROMPT | llm | StrOutputParser()
     return chain.invoke({"question": question}).strip()
+
+
+def format_history(history, limit=500):
+    lines = []
+    for m in history:
+        role = "User" if m["role"] == "user" else "Assistant"
+        content = m["content"]
+        if len(content) > limit:
+            content = content[:limit] + "…"
+        lines.append(f"{role}: {content}")
+    return "\n".join(lines)
+
+
+STANDALONE_PROMPT = ChatPromptTemplate.from_template(
+    "Given the conversation about a codebase and a follow-up question, "
+    "rewrite the follow-up as one standalone question that makes sense "
+    "without the conversation. If it is already standalone, return it "
+    "unchanged. Output only the question.\n\n"
+    "Conversation:\n{history}\n\nFollow-up: {question}"
+)
+
+
+def standalone_question(history, question: str) -> str:
+    llm = ChatGroq(
+        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"), temperature=0
+    )
+    chain = STANDALONE_PROMPT | llm | StrOutputParser()
+    return chain.invoke(
+        {"history": format_history(history), "question": question}
+    ).strip()
 
 
 def retrieve(repo: str, question: str, k: int = 5, embeddings=None, reranker=None):
@@ -113,7 +143,12 @@ def answer(repo: str, question: str, k: int = 5):
         model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"), temperature=0
     )
     chain = PROMPT | llm | StrOutputParser()
-    return chain.invoke({"context": format_context(docs), "question": question}), docs
+    return (
+        chain.invoke(
+            {"context": format_context(docs), "history": "", "question": question}
+        ),
+        docs,
+    )
 
 
 if __name__ == "__main__":

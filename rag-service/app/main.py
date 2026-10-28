@@ -16,7 +16,14 @@ from fastapi.responses import StreamingResponse
 from langchain_core.output_parsers import StrOutputParser
 from langchain_groq import ChatGroq
 
-from app.ask import PROMPT, RERANK_MODEL, format_context, retrieve
+from app.ask import (
+    PROMPT,
+    RERANK_MODEL,
+    format_context,
+    format_history,
+    retrieve,
+    standalone_question,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +94,15 @@ def get_index(job_id: str):
     return jobs[job_id]
 
 
+class HistoryMessage(BaseModel):
+    role: str
+    content: str
+
+
 class AskRequest(BaseModel):
     repo: str
     question: str
+    history: list[HistoryMessage] = []
 
 
 def sse(event: str, data) -> str:
@@ -101,18 +114,33 @@ def sse(event: str, data) -> str:
 def ask(req: AskRequest):
     def stream():
         try:
+            history = [m.model_dump() for m in req.history]
+            search_q = req.question
+            if history:
+                search_q = standalone_question(history, req.question)
             docs = retrieve(
-                req.repo, req.question, 5, app.state.embeddings, app.state.reranker
+                req.repo, search_q, 5, app.state.embeddings, app.state.reranker
             )
             llm = ChatGroq(
                 model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
                 temperature=0,
             )
             chain = PROMPT | llm | StrOutputParser()
+
+            history_text = ""
+            if history:
+                history_text = (
+                    "Conversation so far:\n" + format_history(history) + "\n\n"
+                )
             for token in chain.stream(
-                {"context": format_context(docs), "question": req.question}
+                {
+                    "context": format_context(docs),
+                    "history": history_text,
+                    "question": req.question,
+                }
             ):
                 yield sse("token", token)
+
             citations = [
                 {
                     "file": d.metadata["file"],

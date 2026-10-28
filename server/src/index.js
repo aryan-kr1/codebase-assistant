@@ -106,6 +106,13 @@ app.post("/api/ask", async (req, res) => {
     return res.status(404).json({ error: "Chat not found" });
   }
 
+  const recent = await Message.find({ chat: chat._id })
+    .sort({ createdAt: -1 })
+    .limit(4);
+  const history = recent
+    .reverse()
+    .map((m) => ({ role: m.role, content: m.content }));
+
   await Message.create({ chat: chat._id, role: "user", content: question });
   const update = { updatedAt: new Date() };
   if (chat.title === "New chat") update.title = question.slice(0, 60);
@@ -119,7 +126,7 @@ app.post("/api/ask", async (req, res) => {
     const upstream = await fetch(`${RAG_URL}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repo: chat.repo, question }),
+      body: JSON.stringify({ repo: chat.repo, question, history }),
       signal: controller.signal,
     });
 
