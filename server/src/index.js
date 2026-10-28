@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const { Readable } = require("node:stream");
+const { rateLimit } = require("express-rate-limit");
 
 const connectDB = require("./db");
 const Chat = require("./models/Chat");
@@ -14,6 +15,23 @@ const RAG_URL = process.env.RAG_URL || "http://localhost:8000";
 
 app.use(cors());
 app.use(express.json());
+
+// Limits are per IP and kept in memory (reset when the server restarts)
+const askLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 6,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many questions. Wait a minute and try again." },
+});
+
+const indexLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many indexing requests. Try again in a few minutes." },
+});
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
@@ -31,7 +49,7 @@ async function forwardJson(res, path, options) {
   }
 }
 
-app.post("/api/index", (req, res) => {
+app.post("/api/index", indexLimiter, (req, res) => {
   forwardJson(res, "/index", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -92,7 +110,7 @@ app.get("/api/chats/:id/code", async (req, res) => {
 
 // ---- Ask: stream the answer to the client and save it when it finishes ----
 
-app.post("/api/ask", async (req, res) => {
+app.post("/api/ask", askLimiter, async (req, res) => {
   const { chatId, question } = req.body || {};
   if (!chatId || !question) {
     return res.status(400).json({ error: "chatId and question are required" });
