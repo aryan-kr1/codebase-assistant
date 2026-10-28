@@ -220,3 +220,19 @@ button:disabled {
   color: #656d76;
   overflow-wrap: anywhere;
 }
+
+.chat-row {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 4px;
+}
+.chat-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+.chat-actions button {
+  font-size: 12px;
+  padding: 2px 8px;
+  cursor: pointer;
+}

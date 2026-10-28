@@ -258,6 +258,51 @@ export default function App() {
     setSnippet(null);
   }
 
+  async function renameChat(chat) {
+    const title = window.prompt("New chat name:", chat.title);
+    if (title === null) return;
+    const trimmed = title.trim();
+    if (!trimmed || trimmed === chat.title) return;
+    setError("");
+    try {
+      const res = await apiFetch(`/api/chats/${chat._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: trimmed }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Could not rename chat.");
+      }
+      await loadChats();
+    } catch (err) {
+      setError(err.message || "Could not rename chat.");
+    }
+  }
+
+  async function deleteChat(chat) {
+    if (!window.confirm(`Delete "${chat.title}" and all its messages?`)) return;
+    setError("");
+    try {
+      const res = await apiFetch(`/api/chats/${chat._id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Could not delete chat.");
+      }
+      if (chat._id === activeId) {
+        codeReq.current++;
+        setSnippet(null);
+        setMessages([]);
+        setActiveId(null);
+      }
+      await loadChats();
+    } catch (err) {
+      setError(err.message || "Could not delete chat.");
+    }
+  }
+
   // Split answer text into plain text and clickable citations
   function renderContent(text) {
     const parts = [];
@@ -434,18 +479,27 @@ export default function App() {
 
         <div className="chat-list">
           {chats.map((chat) => (
-            <button
-              key={chat._id}
-              className={`chat-item ${chat._id === activeId ? "active" : ""}`}
-              disabled={streaming}
-              onClick={() => {
-                setError("");
-                setActiveId(chat._id);
-              }}
-            >
-              <span>{chat.title}</span>
-              <small>{chat.repo}</small>
-            </button>
+            <div key={chat._id} className="chat-row">
+              <button
+                className={`chat-item ${chat._id === activeId ? "active" : ""}`}
+                disabled={streaming}
+                onClick={() => {
+                  setError("");
+                  setActiveId(chat._id);
+                }}
+              >
+                <span>{chat.title}</span>
+                <small>{chat.repo}</small>
+              </button>
+              <div className="chat-actions">
+                <button disabled={streaming} onClick={() => renameChat(chat)}>
+                  Rename
+                </button>
+                <button disabled={streaming} onClick={() => deleteChat(chat)}>
+                  Delete
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       </aside>

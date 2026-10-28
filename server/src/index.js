@@ -239,6 +239,38 @@ app.post("/api/ask", requireAuth, askLimiter, async (req, res) => {
   }
 });
 
+app.delete("/api/chats/:id", requireAuth, async (req, res) => {
+  try {
+    const chat = await Chat.findOne({ _id: req.params.id, user: req.userId });
+    if (!chat) return res.status(404).json({ error: "Chat not found." });
+    await Message.deleteMany({ chat: chat._id });
+    await chat.deleteOne();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(404).json({ error: "Chat not found." });
+  }
+});
+
+app.patch("/api/chats/:id", requireAuth, async (req, res) => {
+  try {
+    const title = String(req.body.title || "")
+      .trim()
+      .slice(0, 60);
+    if (!title) return res.status(400).json({ error: "Title is required." });
+    const chat = await Chat.findOneAndUpdate(
+      { _id: req.params.id, user: req.userId },
+      { title },
+      { new: true },
+    );
+    if (!chat) return res.status(404).json({ error: "Chat not found." });
+    res.json(chat);
+  } catch (err) {
+    console.error(err);
+    res.status(404).json({ error: "Chat not found." });
+  }
+});
+
 connectDB().then(() => {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
