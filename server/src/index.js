@@ -5,7 +5,7 @@ const mongoose = require("mongoose");
 const { Readable } = require("node:stream");
 
 const connectDB = require("./db");
-const Chat = require("./models/chat");
+const Chat = require("./models/Chat");
 const Message = require("./models/Message");
 
 const app = express();
@@ -67,6 +67,27 @@ app.get("/api/chats/:id/messages", async (req, res) => {
     createdAt: 1,
   });
   res.json(messages);
+});
+
+app.get("/api/chats/:id/code", async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: "Invalid chat id" });
+  }
+  const { file, start, end } = req.query;
+  if (!file || !start || !end) {
+    return res.status(400).json({ error: "file, start and end are required" });
+  }
+  const chat = await Chat.findById(req.params.id);
+  if (!chat) {
+    return res.status(404).json({ error: "Chat not found" });
+  }
+  const params = new URLSearchParams({
+    repo: chat.repo,
+    file: String(file),
+    start: String(start),
+    end: String(end),
+  });
+  forwardJson(res, `/code?${params}`);
 });
 
 // ---- Ask: stream the answer to the client and save it when it finishes ----

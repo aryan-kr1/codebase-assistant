@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import uuid
 import subprocess
 from contextlib import asynccontextmanager
@@ -18,7 +20,7 @@ from app.ask import PROMPT, RERANK_MODEL, format_context, retrieve
 
 logger = logging.getLogger(__name__)
 
-from app.config import get_embeddings
+from app.config import REPOS_DIR, get_embeddings
 from app.ingest import ingest
 
 jobs = {}  # job_id -> {"status", "url", "repo", "chunks", "error"}
@@ -126,3 +128,28 @@ def ask(req: AskRequest):
             yield sse("error", "Something went wrong answering that question.")
 
     return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+MAX_CODE_LINES = 200
+
+
+@app.get("/code")
+def get_code(repo: str, file: str, start: int, end: int):
+    if start < 1 or end < start:
+        raise HTTPException(status_code=400, detail="Invalid line range.")
+
+    repos_root = Path(REPOS_DIR).resolve()
+    repo_root = (repos_root / repo).resolve()
+    if repo_root.parent != repos_root:
+        raise HTTPException(status_code=400, detail="Invalid repo.")
+
+    path = (repo_root / file).resolve()
+    if not path.is_relative_to(repo_root):
+        raise HTTPException(status_code=400, detail="Invalid file path.")
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="File not found.")
+
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    end = min(end, start + MAX_CODE_LINES - 1, len(lines))
+    code = "\n".join(lines[start - 1 : end])
+    return {"file": file, "start_line": start, "end_line": end, "code": code}
