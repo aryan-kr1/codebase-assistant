@@ -174,15 +174,24 @@ export default function App() {
         } else if (job.status === "done") {
           stopped = true;
           clearInterval(timer);
-          const chatRes = await apiFetch("/api/chats", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ repo: job.repo }),
-          });
-          if (!chatRes.ok) throw new Error();
-          const chat = await chatRes.json();
+
+          // Reuse the newest chat for this repo if there is one
+          const listRes = await apiFetch("/api/chats");
+          if (!listRes.ok) throw new Error();
+          const list = await listRes.json();
+          let chat = list.find((c) => c.repo === job.repo);
+          if (!chat) {
+            const chatRes = await apiFetch("/api/chats", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ repo: job.repo }),
+            });
+            if (!chatRes.ok) throw new Error();
+            chat = await chatRes.json();
+          }
           await loadChats();
           setActiveId(chat._id);
+
           setRepoUrl("");
           setJobId(null);
           setJobStatus("");
