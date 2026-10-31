@@ -2,7 +2,7 @@
 
 Paste a public GitHub repo URL, let the app index the code, then ask questions in plain English. Answers stream in live and cite the exact files and line ranges they used. Click a citation to open the real code.
 
-> Live demo: _coming soon_  
+> Live demo: https://askrepo.me (the server is switched off when idle; if it doesn't load, see the demo video)
 > Demo video: _coming soon_
 
 ## What it does
@@ -72,7 +72,7 @@ Each change was measured on its own, with settings fixed before the run. Every r
 
 ## Run it locally
 
-You need Node 18+, Python 3.10+, a MongoDB Atlas cluster and a Groq API key.
+You need Node 18+, Python 3.12, a MongoDB Atlas cluster and a Groq API key.
 
 Create two `.env` files (never commit them):
 
@@ -120,4 +120,12 @@ python -m eval.run_eval express --label my_run --questions questions2.json
 
 ## Deployment
 
-_To be added._
+Runs on a single Azure VM (Standard B2als_v2, 2 vCPU / 4 GiB RAM, Ubuntu 24.04), paid with Azure for Students credit.
+
+- **nginx** serves the built React app and proxies `/api` to Express, with response buffering off so answers stream token by token.
+- **systemd** runs the Express server and the Python rag-service as separate services that restart on failure and on reboot.
+- **HTTPS** comes from Let's Encrypt (certbot, auto-renewing), with the login cookie set to `secure` in production.
+- **MongoDB Atlas** (free tier) stores users, chats and messages, with network access limited to an IP allowlist.
+- **Embeddings and cloned repos** live on the VM's disk (Chroma), not in the database.
+- **Secrets** are in `.env` files on the server only and are never committed.
+- **Cost:** a small VM paid from student credit; it is stopped when idle to stretch the credit.
