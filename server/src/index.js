@@ -20,6 +20,8 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const RAG_URL = process.env.RAG_URL || "http://localhost:8000";
 
+app.set("trust proxy", 1);
+
 app.use(cors());
 app.use(express.json());
 app.use(cookieParser());
