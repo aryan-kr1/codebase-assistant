@@ -1,8 +1,6 @@
 import os
 import sys
 
-from sentence_transformers import CrossEncoder
-
 import re
 from langchain_core.documents import Document
 from rank_bm25 import BM25Okapi
@@ -14,6 +12,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
 
 from app.config import DB_DIR, get_embeddings
+from app.onnx_models import OnnxReranker, RERANK_MODEL
 
 load_dotenv()
 
@@ -36,7 +35,6 @@ Context:
 POOL = 20
 RRF_C = 60
 CANDIDATES = 20
-RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 
 def tokenize(text: str):
@@ -124,7 +122,7 @@ def retrieve(repo: str, question: str, k: int = 5, embeddings=None, reranker=Non
     candidates = [by_key[key] for key in best]
 
     # rerank against the ORIGINAL question
-    reranker = reranker or CrossEncoder(RERANK_MODEL)
+    reranker = reranker or OnnxReranker()
     scores = reranker.predict([(question, d.page_content) for d in candidates])
     order = sorted(range(len(candidates)), key=lambda i: scores[i], reverse=True)
     return [candidates[i] for i in order[:k]]

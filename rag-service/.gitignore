@@ -8,4 +8,5 @@ __pycache__/
 data/
 .DS_Store
 .pytest_cache/
-.ipynb_checkpoints/
+.ipynb_checkpoints/data-torch-backup/
+.venv-onnx/

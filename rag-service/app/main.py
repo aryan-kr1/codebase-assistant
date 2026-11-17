@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from pydantic import BaseModel
-from sentence_transformers import CrossEncoder
 
 import json
 import chromadb
@@ -25,6 +24,7 @@ from app.ask import (
     retrieve,
     standalone_question,
 )
+from app.onnx_models import OnnxReranker
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ jobs = {}  # job_id -> {"status", "url", "repo", "chunks", "error"}
 async def lifespan(app: FastAPI):
     # Runs once at startup: load the heavy models and keep them in memory
     app.state.embeddings = get_embeddings()
-    app.state.reranker = CrossEncoder(RERANK_MODEL)
+    app.state.reranker = OnnxReranker()
     yield
 
 

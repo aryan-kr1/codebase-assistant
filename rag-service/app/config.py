@@ -1,5 +1,4 @@
 from pathlib import Path
-from langchain_huggingface import HuggingFaceEmbeddings
 
 ROOT = Path(__file__).resolve().parent.parent
 REPOS_DIR = ROOT / "data" / "repos"
@@ -53,8 +52,9 @@ MAX_FILE_BYTES = 200_000
 
 
 def get_embeddings():
-    # Local and free. The first run downloads ~90MB.
-    return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    from app.onnx_models import OnnxEmbeddings
+
+    return OnnxEmbeddings()
 
 
 def repo_name_from_url(url: str) -> str:
