@@ -11,7 +11,7 @@ class OnnxEmbeddings(Embeddings):
         self.model = TextEmbedding(model_name=EMBED_MODEL)
 
     def embed_documents(self, texts):
-        return [v.tolist() for v in self.model.embed(texts)]
+        return [v.tolist() for v in self.model.embed(texts, batch_size=4)]
 
     def embed_query(self, text):
         return next(iter(self.model.embed([text]))).tolist()
@@ -26,4 +26,4 @@ class OnnxReranker:
     def predict(self, pairs):
         query = pairs[0][0]
         docs = [p[1] for p in pairs]
-        return list(self.model.rerank(query, docs))
+        return list(self.model.rerank(query, docs, batch_size=2))
