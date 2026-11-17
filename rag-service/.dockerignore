@@ -1,0 +1,11 @@
+.env
+.env.*
+.venv
+.venv-onnx
+venv
+data
+data-torch-backup
+eval
+__pycache__
+*.pyc
+.git
