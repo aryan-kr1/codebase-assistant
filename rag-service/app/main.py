@@ -28,8 +28,8 @@ from app.onnx_models import OnnxReranker
 
 logger = logging.getLogger(__name__)
 
-from app.config import DB_DIR, REPOS_DIR, get_embeddings
-from app.ingest import ingest
+from app.config import DB_DIR, REPOS_DIR, MAX_CHUNKS, get_embeddings
+from app.ingest import ingest, RepoTooLargeError
 
 jobs = {}  # job_id -> {"status", "url", "repo", "chunks", "error"}
 
@@ -59,6 +59,11 @@ def run_index(job_id: str, url: str):
         jobs[job_id].update(
             status="failed",
             error="Could not clone the repository. Check the URL and that the repo is public.",
+        )
+    except RepoTooLargeError as e:
+        jobs[job_id].update(
+            status="failed",
+            error=f"This repo is too large for the free demo ({e.chunks} chunks, limit {MAX_CHUNKS}). Try a smaller repo.",
         )
     except Exception:
         logger.exception("indexing failed for %s", url)

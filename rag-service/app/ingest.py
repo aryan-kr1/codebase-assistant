@@ -16,6 +16,7 @@ from app.config import (
     DB_DIR,
     EXTS,
     MAX_FILE_BYTES,
+    MAX_CHUNKS,
     REPOS_DIR,
     SKIP_DIRS,
     SKIP_FILES,
@@ -24,6 +25,12 @@ from app.config import (
 )
 
 STATE_FILE = REPOS_DIR.parent / "index_state.json"  # data/index_state.json
+
+
+class RepoTooLargeError(Exception):
+    def __init__(self, chunks: int):
+        super().__init__(f"{chunks} chunks")
+        self.chunks = chunks
 
 
 def load_state():
@@ -134,6 +141,10 @@ def ingest(url: str, embeddings=None, force: bool = False):
     head = local_head(root)
     chunks = chunk_repo(root)
     print(f"{name}: {len(chunks)} chunks")
+
+    if len(chunks) > MAX_CHUNKS:
+        shutil.rmtree(root, ignore_errors=True)
+        raise RepoTooLargeError(len(chunks))
 
     store = Chroma(
         collection_name=name,

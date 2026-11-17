@@ -1,3 +1,5 @@
+import os
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -49,6 +51,7 @@ SKIP_FILES = {
     "CHANGES.md",
 }
 MAX_FILE_BYTES = 200_000
+MAX_CHUNKS = int(os.getenv("MAX_CHUNKS", "1000"))
 
 
 def get_embeddings():
