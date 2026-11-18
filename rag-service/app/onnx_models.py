@@ -8,7 +8,7 @@ RERANK_MODEL = "Xenova/ms-marco-MiniLM-L-6-v2"
 
 class OnnxEmbeddings(Embeddings):
     def __init__(self):
-        self.model = TextEmbedding(model_name=EMBED_MODEL)
+        self.model = TextEmbedding(model_name=EMBED_MODEL, threads=1)
 
     def embed_documents(self, texts):
         return [v.tolist() for v in self.model.embed(texts, batch_size=4)]
@@ -21,7 +21,7 @@ class OnnxReranker:
     # Same predict() shape as sentence-transformers CrossEncoder,
     # so ask.py's retrieve() code does not change.
     def __init__(self):
-        self.model = TextCrossEncoder(model_name=RERANK_MODEL)
+        self.model = TextCrossEncoder(model_name=RERANK_MODEL, threads=1)
 
     def predict(self, pairs):
         query = pairs[0][0]
