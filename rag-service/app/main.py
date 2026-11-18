@@ -24,7 +24,7 @@ from app.ask import (
     retrieve,
     standalone_question,
 )
-from app.onnx_models import OnnxReranker
+from app.reranker import get_reranker
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ jobs = {}  # job_id -> {"status", "url", "repo", "chunks", "error"}
 async def lifespan(app: FastAPI):
     # Runs once at startup: load the heavy models and keep them in memory
     app.state.embeddings = get_embeddings()
-    app.state.reranker = OnnxReranker()
+    app.state.reranker = get_reranker()
     yield
 
 

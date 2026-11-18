@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 import re
 from langchain_core.documents import Document
@@ -12,7 +13,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
 
 from app.config import DB_DIR, get_embeddings
-from app.onnx_models import OnnxReranker, RERANK_MODEL
+from app.onnx_models import RERANK_MODEL
+from app.reranker import get_reranker
 
 load_dotenv()
 
@@ -34,7 +36,7 @@ Context:
 
 POOL = 20
 RRF_C = 60
-CANDIDATES = 20
+CANDIDATES = int(os.getenv("CANDIDATES", "20"))
 
 
 def tokenize(text: str):
@@ -87,16 +89,25 @@ def standalone_question(history, question: str) -> str:
 
 
 def retrieve(repo: str, question: str, k: int = 5, embeddings=None, reranker=None):
+    t0 = time.perf_counter()
+    marks = []
+
+    def mark(name):
+        marks.append((name, time.perf_counter() - t0))
+
     store = Chroma(
         collection_name=repo,
         embedding_function=embeddings or get_embeddings(),
         persist_directory=str(DB_DIR),
     )
+    mark("chroma_open")
 
     search_q = rewrite_query(question) if os.getenv("REWRITE", "0") == "1" else question
+    mark("rewrite")
 
     # vector top 20
     vec_docs = store.similarity_search(search_q, k=POOL)
+    mark("vector_search")
 
     # BM25 top 20 over all chunks in the collection
     data = store.get()
@@ -104,10 +115,13 @@ def retrieve(repo: str, question: str, k: int = 5, embeddings=None, reranker=Non
         Document(page_content=t, metadata=m)
         for t, m in zip(data["documents"], data["metadatas"])
     ]
+    mark("chroma_get")
+
     bm25 = BM25Okapi([tokenize(d.page_content) for d in all_docs])
     scores = bm25.get_scores(tokenize(search_q))
     top = sorted(range(len(all_docs)), key=lambda i: scores[i], reverse=True)[:POOL]
     bm25_docs = [all_docs[i] for i in top]
+    mark("bm25")
 
     # Reciprocal Rank Fusion
     fused = {}
@@ -120,11 +134,15 @@ def retrieve(repo: str, question: str, k: int = 5, embeddings=None, reranker=Non
 
     best = sorted(fused, key=fused.get, reverse=True)[:CANDIDATES]
     candidates = [by_key[key] for key in best]
+    mark("fusion")
 
     # rerank against the ORIGINAL question
-    reranker = reranker or OnnxReranker()
+    reranker = reranker or get_reranker()
     scores = reranker.predict([(question, d.page_content) for d in candidates])
+    mark("rerank")
+
     order = sorted(range(len(candidates)), key=lambda i: scores[i], reverse=True)
+    print("TIMING " + " ".join(f"{n}={t:.1f}s" for n, t in marks), flush=True)
     return [candidates[i] for i in order[:k]]
 
 
