@@ -68,3 +68,18 @@ Cost of CPU reranking is linear (about 4.4 s per candidate chunk at 0.1 CPU), so
 ### Chunk cap
 
 MAX_CHUNKS (default 1000) refuses oversized repos before embedding. axios (2036 chunks) is refused, express (107) indexes. The limit is a judgment call, not measured. With Gemini embeddings it should be lowered (planned: about 200).
+
+### Gemini quota handling and BM25-only fallback (Nov 19)
+
+If the embedding call fails (quota used up or service down), `retrieve()` skips vector search and uses BM25 + Jina rerank only. Question embeddings give up after 2 attempts so users do not wait a minute. `NO_VECTOR=1` forces this mode for testing. Run with 0 Jina failures.
+
+| Setup (Jina rerank) | Tuned hit@5 | file-only | MRR | Held-out hit@5 | file-only | MRR |
+| --- | --- | --- | --- | --- | --- | --- |
+| Hybrid, local ONNX embeddings | 95% | 100% | 0.827 | 100% | 100% | 0.950 |
+| Hybrid, Gemini embeddings | 90% | 100% | 0.900 | 100% | 100% | 0.950 |
+| BM25 only (degraded mode) | 100% | 100% | 0.8375 | 100% | 100% | 0.975 |
+
+Notes:
+- Degraded mode is as good as hybrid on these sets. This does not show vector search is useless: both sets are 20 Express questions and most name an exact identifier, which favours BM25. Conceptual questions (no identifier in the query) are untested; they need a fresh third question set, ideally on a second repo.
+- Three tuned hits are at rank 4 (Q8, Q18, Q20), hence MRR 0.8375 with a 100% hit rate.
+- Indexing protections: one index job at a time, MAX_CHUNKS 200 with Gemini, and a failed index run deletes its half-filled collection. A quota failure shows a friendly message. The 429 path was not tested live.
