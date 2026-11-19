@@ -1,0 +1,13 @@
+.git
+**/.env
+**/.env.*
+**/node_modules
+**/.venv
+**/.venv-onnx
+**/venv
+**/__pycache__
+**/*.pyc
+rag-service/data
+rag-service/data-torch-backup
+rag-service/eval
+client/dist

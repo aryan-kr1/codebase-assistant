@@ -273,6 +273,24 @@ app.patch("/api/chats/:id", requireAuth, async (req, res) => {
   }
 });
 
+// Serve the built React client (only when client/dist exists; dev uses Vite)
+const path = require("node:path");
+const fs = require("node:fs");
+const clientDist = path.join(__dirname, "../../client/dist");
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.use((req, res, next) => {
+    if (
+      req.method !== "GET" ||
+      req.path.startsWith("/api") ||
+      req.path === "/health"
+    ) {
+      return next();
+    }
+    res.sendFile(path.join(clientDist, "index.html"));
+  });
+}
+
 connectDB().then(() => {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
