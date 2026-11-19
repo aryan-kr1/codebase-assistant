@@ -157,8 +157,13 @@ def ingest(url: str, embeddings=None, force: bool = False):
         embedding_function=embeddings,
         persist_directory=str(DB_DIR),
     )
-    for i in range(0, len(chunks), 500):
-        store.add_documents(chunks[i : i + 500])
+    try:
+        for i in range(0, len(chunks), 500):
+            store.add_documents(chunks[i : i + 500])
+    except Exception:
+        # never leave a half-filled collection that /ask would treat as indexed
+        store.delete_collection()
+        raise
 
     state[name] = head
     save_state(state)

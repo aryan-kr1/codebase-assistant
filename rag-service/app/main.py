@@ -2,6 +2,7 @@ from pathlib import Path
 
 import uuid
 import subprocess
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
@@ -30,8 +31,10 @@ logger = logging.getLogger(__name__)
 
 from app.config import DB_DIR, REPOS_DIR, MAX_CHUNKS, get_embeddings
 from app.ingest import ingest, RepoTooLargeError
+from app.gemini_embed import GeminiQuotaError
 
 jobs = {}  # job_id -> {"status", "url", "repo", "chunks", "error"}
+index_lock = threading.Lock()
 
 
 @asynccontextmanager
@@ -50,8 +53,14 @@ class IndexRequest(BaseModel):
 
 
 def run_index(job_id: str, url: str):
-    jobs[job_id]["status"] = "running"
+    if not index_lock.acquire(blocking=False):
+        jobs[job_id].update(
+            status="failed",
+            error="Another repo is being indexed right now. Try again in a minute.",
+        )
+        return
     try:
+        jobs[job_id]["status"] = "running"
         repo, chunks = ingest(url, app.state.embeddings)
         jobs[job_id].update(status="done", repo=repo, chunks=chunks)
     except subprocess.CalledProcessError:
@@ -65,9 +74,17 @@ def run_index(job_id: str, url: str):
             status="failed",
             error=f"This repo is too large for the free demo ({e.chunks} chunks, limit {MAX_CHUNKS}). Try a smaller repo.",
         )
+    except GeminiQuotaError:
+        logger.exception("embedding quota reached while indexing %s", url)
+        jobs[job_id].update(
+            status="failed",
+            error="The demo's embedding quota is used up for now. Try again in a few minutes or tomorrow, or ask about a repo that is already indexed.",
+        )
     except Exception:
         logger.exception("indexing failed for %s", url)
         jobs[job_id].update(status="failed", error="Indexing failed.")
+    finally:
+        index_lock.release()
 
 
 @app.get("/health")
@@ -167,6 +184,11 @@ def ask(req: AskRequest):
             ]
             yield sse("citations", citations)
             yield sse("done", {})
+        except GeminiQuotaError:
+            yield sse(
+                "error",
+                "The demo's embedding quota is used up for now. Try again later.",
+            )
         except Exception:
             logger.exception("ask failed for repo %s", req.repo)
             yield sse("error", "Something went wrong answering that question.")
