@@ -39,7 +39,7 @@ Notes:
 
 - Each set has only 20 questions, so one question is 5 points. Jina improved both sets (tuned +2 questions, held-out +1). Gemini embeddings are equal to local embeddings within noise: tuned -1 question (a new miss on Q20, ETags, right files but wrong chunk range), held-out identical.
 - The held-out set is saturated (100%). The next honest test needs a fresh third question set.
-- Known misses: tuned Q8 (package.json, wrong chunk range) in every run; Q10 and Q18 fixed by Jina.
+- Known misses: tuned Q8 (package.json, wrong chunk range) in every hybrid run (it hit at rank 4 with BM25 only); Q10 and Q18 fixed by Jina.
 - Jina rerank free tier: 10M one-time tokens, about 5K tokens per question. Non-commercial license, fine for a portfolio demo.
 - Gemini embeddings free tier: 100 requests/min, 30K tokens/min, 1,000 requests/day. Measured: a batch of N texts counts as N requests, and a 1000-character chunk is about 300 tokens. Indexing express (107 chunks) uses about 11% of the daily quota. Free-tier content may be used by Google to improve its products.
 
@@ -67,7 +67,7 @@ Cost of CPU reranking is linear (about 4.4 s per candidate chunk at 0.1 CPU), so
 
 ### Chunk cap
 
-MAX_CHUNKS (default 1000) refuses oversized repos before embedding. axios (2036 chunks) is refused, express (107) indexes. The limit is a judgment call, not measured. With Gemini embeddings it should be lowered (planned: about 200).
+MAX_CHUNKS (default 1000) refuses oversized repos before embedding. axios (2036 chunks) is refused, express (107) indexes. The limit is a judgment call, not measured. With Gemini embeddings the default is 200 (about 20% of the daily embedding quota per repo); with local ONNX it stays 1000.
 
 ### Gemini quota handling and BM25-only fallback (Nov 19)
 
