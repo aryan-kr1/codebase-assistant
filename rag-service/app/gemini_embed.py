@@ -7,9 +7,9 @@ from langchain_core.embeddings import Embeddings
 
 MODEL = os.getenv("GEMINI_EMBED_MODEL", "gemini-embedding-2")
 BASE = "https://generativelanguage.googleapis.com/v1beta/models"
-BATCH = 50          # texts per request (Google allows up to 100)
-MAX_TPM = 27000     # stay under the 30K tokens/min limit
-MAX_RPM = 90        # stay under the 100 requests/min limit
+BATCH = 50  # texts per request (Google allows up to 100)
+MAX_TPM = 27000  # stay under the 30K tokens/min limit
+MAX_RPM = 90  # stay under the 100 requests/min limit
 ATTEMPTS = 5
 
 
@@ -43,11 +43,11 @@ class GeminiEmbeddings(Embeddings):
                 return
             time.sleep(max(0.5, 60 - (now - self.window[0][0]) + 0.5))
 
-    def _post(self, method, body, tokens, reqs):
+    def _post(self, method, body, tokens, reqs, attempts=ATTEMPTS):
         if not self.key:
             raise RuntimeError("GEMINI_API_KEY missing")
         last = None
-        for attempt in range(ATTEMPTS):
+        for attempt in range(attempts):
             self._wait_for_room(tokens, reqs)
             self.window.append((time.time(), tokens, reqs))
             try:
@@ -58,15 +58,18 @@ class GeminiEmbeddings(Embeddings):
                 )
             except httpx.TransportError as e:
                 last = f"network error: {type(e).__name__}"
-                time.sleep(2 ** attempt * 2)
+                time.sleep(2**attempt * 2)
                 continue
             if resp.status_code == 200:
                 return resp.json()
             last = resp.status_code
             if resp.status_code == 429 or resp.status_code >= 500:
                 wait = resp.headers.get("Retry-After")
-                delay = float(wait) if wait and wait.isdigit() else 2 ** attempt * 2
-                print(f"Gemini embed retry ({resp.status_code}), sleeping {delay}s", flush=True)
+                delay = float(wait) if wait and wait.isdigit() else 2**attempt * 2
+                print(
+                    f"Gemini embed retry ({resp.status_code}), sleeping {delay}s",
+                    flush=True,
+                )
                 time.sleep(delay)
                 continue
             raise RuntimeError(f"Gemini embedding error {resp.status_code}")
@@ -95,5 +98,5 @@ class GeminiEmbeddings(Embeddings):
 
     def embed_query(self, text):
         body = {"model": f"models/{MODEL}", "content": {"parts": [{"text": text}]}}
-        d = self._post(f"{MODEL}:embedContent", body, _tokens(text), 1)
+        d = self._post(f"{MODEL}:embedContent", body, _tokens(text), 1, attempts=2)
         return _norm(d["embedding"]["values"])

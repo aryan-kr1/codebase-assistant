@@ -106,7 +106,14 @@ def retrieve(repo: str, question: str, k: int = 5, embeddings=None, reranker=Non
     mark("rewrite")
 
     # vector top 20
-    vec_docs = store.similarity_search(search_q, k=POOL)
+    try:
+        if os.getenv("NO_VECTOR", "0") == "1":
+            raise RuntimeError("NO_VECTOR set")
+        vec_docs = store.similarity_search(search_q, k=POOL)
+    except RuntimeError as e:
+        # embedding service down or over quota: keep going with BM25 + rerank only
+        print(f"Vector search unavailable ({e}); using BM25 only", flush=True)
+        vec_docs = []
     mark("vector_search")
 
     # BM25 top 20 over all chunks in the collection
