@@ -24,7 +24,7 @@ from app.config import (
     repo_name_from_url,
 )
 
-STATE_FILE = REPOS_DIR.parent / "index_state.json"  # data/index_state.json
+from app.config import STATE_FILE
 
 
 class RepoTooLargeError(Exception):

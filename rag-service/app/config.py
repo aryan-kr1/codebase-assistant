@@ -4,7 +4,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 REPOS_DIR = ROOT / "data" / "repos"
-DB_DIR = ROOT / "data" / "chroma"
+EMBEDDER = os.getenv("EMBEDDER", "onnx")
+_SUFFIX = "" if EMBEDDER == "onnx" else f"-{EMBEDDER}"
+DB_DIR = ROOT / "data" / f"chroma{_SUFFIX}"
+STATE_FILE = ROOT / "data" / f"index_state{_SUFFIX}.json"
 
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 150
@@ -55,6 +58,10 @@ MAX_CHUNKS = int(os.getenv("MAX_CHUNKS", "1000"))
 
 
 def get_embeddings():
+    if EMBEDDER == "gemini":
+        from app.gemini_embed import GeminiEmbeddings
+
+        return GeminiEmbeddings()
     from app.onnx_models import OnnxEmbeddings
 
     return OnnxEmbeddings()
