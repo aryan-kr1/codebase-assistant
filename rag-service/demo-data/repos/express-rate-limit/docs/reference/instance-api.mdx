@@ -1,0 +1,47 @@
+---
+title: 'Instance API'
+icon: 'rocket'
+---
+
+## `resetKey(key)`
+
+Resets the rate limiting for a given key. An example use case is to allow users
+to complete a captcha to reset their rate limit, then call this function.
+
+Example:
+
+```ts
+import { rateLimit, ipKeyGenerator } from 'express-rate-limit'
+
+const limiter = rateLimit({
+    skip: (req) => req.url === '/reset', // Don't limit the reset url!
+	// ...
+})
+
+app.use(limiter)
+
+app.post('/reset', async (req, res) => {
+    if (/* Validate that they completed the captcha or whatever */) {
+        limiter.resetKey(ipKeyGenerator(req.ip));
+        res.send('Rate limit is reset!')
+    } else {
+        res.status(400).send("Wrong answer, try again.")
+    }
+})
+```
+
+The default [`keyGenerator`](/reference/configuration#keygenerator) stores IPv6
+clients under their [subnet](/reference/configuration#ipv6subnet) rather than
+their full address, so `resetKey(req.ip)` would not match their key. Passing the
+IP through [`ipKeyGenerator`](/reference/helpers#ipkeygenerator) produces the
+same key the limiter uses (pass your `ipv6Subnet` as the second argument if you
+changed it). If you use a custom `keyGenerator`, pass the key it returns
+instead.
+
+## `getKey(key)`
+
+Retrieves the hit count and reset time from the store for a given key.
+
+Note: `getKey` depends on store support. It works with the MemoryStore and
+cluster-memory-store, but may not work with other stores. Calling it will throw
+an error if the store does not have a `get` method.

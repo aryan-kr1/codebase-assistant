@@ -1,0 +1,6 @@
+{
+  "express": "43fca52d28a422c8be48fd489cbd4f2d6152bab6",
+  "cors": "5317ebe670db2aaebc1d496eb5d33493deefb3ed",
+  "morgan": "b1272e70812dbc504321eeb5a43d14b0822c150d",
+  "express-rate-limit": "5e654520b14fbf42e0b56de8f81c83ce46a0b594"
+}

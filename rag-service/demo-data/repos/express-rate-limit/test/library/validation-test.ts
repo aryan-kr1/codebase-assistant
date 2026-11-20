@@ -1,0 +1,648 @@
+// /test/library/validation-test.ts
+// Tests the validation functions
+
+import { beforeEach, describe, expect, it, jest } from '@jest/globals'
+import express from 'express'
+import supertest from 'supertest'
+import { ipKeyGenerator, MemoryStore } from '../../source/index.js'
+import type { Logger, Options, Store } from '../../source/types'
+import { getValidations, type Validations } from '../../source/validations.js'
+
+describe('validations tests', () => {
+	let validations: Validations
+	let logger: Logger
+
+	beforeEach(() => {
+		logger = {
+			warn: jest.fn(),
+			error: jest.fn(),
+		}
+
+		validations = getValidations(true, logger)
+	})
+
+	describe('ip', () => {
+		it('should allow a valid IPv4', () => {
+			validations.ip('1.2.3.4')
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it('should allow a valid IPv6', () => {
+			validations.ip('1200:0000:AB00:1234:0000:2552:7777:1313')
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it('should log an error for an invalid IP', () => {
+			validations.ip('badip')
+			expect(logger.error).toHaveBeenCalled()
+		})
+
+		it('should log an error for an undefined IP', () => {
+			validations.ip(undefined)
+			expect(logger.error).toHaveBeenCalled()
+		})
+
+		it('should log an error for an IPv4 with a port', () => {
+			validations.ip('1.2.3.4:1234')
+			expect(logger.error).toHaveBeenCalled()
+		})
+
+		it('should log an error for an IPv6 with a port', () => {
+			validations.ip('[1200:0000:AB00:1234:0000:2552:7777:1313]:1234')
+			expect(logger.error).toHaveBeenCalled()
+		})
+	})
+
+	describe('trustProxy', () => {
+		it('should log an error on "trust proxy" = true', () => {
+			validations.trustProxy({ app: { get: () => true } } as any)
+			expect(logger.error).toHaveBeenCalled()
+		})
+
+		it.each([
+			false,
+			'1.2.3.4',
+			/1.2.3.4/,
+			['1.2.3.4'],
+		])('should not log an error on "trust proxy" = %s', (val) => {
+			validations.trustProxy({ app: { get: () => val } } as any)
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+	})
+
+	describe('xForwardedFor', () => {
+		it.each([
+			[{ 'x-forwarded-for': '1.2.3.4' }, true],
+			[{}, true],
+			[{}, false],
+		])('should not log an error only with headers %j and "trust proxy" = %s', (headers, trustProxy) => {
+			validations.xForwardedForHeader({
+				app: { get: () => trustProxy },
+				headers,
+			} as any)
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it('should log an error with x-forwarded-for header and "trust proxy" = false', () => {
+			validations.xForwardedForHeader({
+				app: { get: () => false },
+				headers: { 'x-forwarded-for': '1.2.3.4' },
+			} as any)
+			expect(logger.error).toHaveBeenCalled()
+		})
+	})
+
+	describe('forwardedHeader', () => {
+		it('should not log an error when the Forwarded header is unset', () => {
+			validations.forwardedHeader({
+				headers: {},
+				ip: '1.2.3.4',
+				socket: { remoteAddress: '1.2.3.4' },
+			} as any)
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it('should log an error when the Forwarded header is set', () => {
+			validations.forwardedHeader({
+				headers: { forwarded: '5.6.7.8' },
+				ip: '1.2.3.4',
+				socket: { remoteAddress: '1.2.3.4' },
+			} as any)
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({ code: 'ERR_ERL_FORWARDED_HEADER' }),
+			)
+		})
+
+		it('should not log an error when request.ip has been set to a non-default value', () => {
+			validations.forwardedHeader({
+				headers: { forwarded: '5.6.7.8' },
+				ip: '1.2.3.100',
+				socket: { remoteAddress: '1.2.3.4' },
+			} as any)
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+	})
+
+	describe('positiveHits', () => {
+		it('should log an error if hits is non-numeric', () => {
+			validations.positiveHits(true)
+			expect(logger.error).toHaveBeenCalled()
+		})
+
+		it('should log an error if hits is less than 1', () => {
+			validations.positiveHits(0)
+			expect(logger.error).toHaveBeenCalled()
+		})
+
+		it('should log an error if hits is not an integer', () => {
+			validations.positiveHits(1.5)
+			expect(logger.error).toHaveBeenCalled()
+		})
+
+		it('should not log an error if hits is a positive integer', () => {
+			validations.positiveHits(1)
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+	})
+
+	describe('unsharedStore', () => {
+		let validations2: Validations
+		beforeEach(() => {
+			// create a second instance
+			// note: the validations instance disables each check after it's first call,
+			// but the unsharedStore check has global state that is shared across all instances in the same process
+			validations2 = getValidations(true, logger)
+		})
+
+		it('should log an error if a store instance is used in two limiters', () => {
+			const store = { localKeys: true }
+
+			validations.unsharedStore(store as Store)
+			expect(logger.error).not.toHaveBeenCalled()
+			validations2.unsharedStore(store as Store)
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({
+					code: 'ERR_ERL_STORE_REUSE',
+				}),
+			)
+		})
+
+		it('should log a different error for stores without local keys', () => {
+			const store = { localKeys: false }
+
+			validations.unsharedStore(store as Store)
+			expect(logger.error).not.toHaveBeenCalled()
+			validations2.unsharedStore(store as Store)
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({
+					code: 'ERR_ERL_STORE_REUSE',
+					message: expect.stringContaining('unique prefix'),
+				}),
+			)
+		})
+
+		it('should not log an error if multiple store instances are used', () => {
+			const store1 = { localKeys: true }
+			const store2 = { localKeys: true }
+
+			validations.unsharedStore(store1 as Store)
+			validations2.unsharedStore(store2 as Store)
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+	})
+
+	describe('singleCount', () => {
+		class TestExternalStore {
+			prefix?: string
+		}
+
+		let validations2: Validations
+		beforeEach(() => {
+			// create a second instance
+			// note: the validations instance disables each check after it's first call,
+			// but the singleCount check has global state that is shared across all instances in the same process
+			validations2 = getValidations(true, logger)
+		})
+
+		it('should log an error if a request is double-counted with a MemoryStore', () => {
+			const request = {}
+			const store = { localKeys: true }
+			const key = '1.2.3.4'
+
+			validations.singleCount(request as any, store as Store, key)
+			expect(logger.error).not.toHaveBeenCalled()
+			validations2.singleCount(request as any, store as Store, key)
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({
+					code: 'ERR_ERL_DOUBLE_COUNT',
+				}),
+			)
+		})
+
+		it('should log an error if a request is double-counted with an external store', () => {
+			const request = {}
+			const store = new TestExternalStore()
+			const key = '1.2.3.4'
+
+			validations.singleCount(request as any, store as Store, key)
+			expect(logger.error).not.toHaveBeenCalled()
+			validations2.singleCount(request as any, store as Store, key)
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({
+					code: 'ERR_ERL_DOUBLE_COUNT',
+				}),
+			)
+		})
+
+		it('should not log an error if a request is double-counted with separate instances of MemoryStore', () => {
+			const request = {}
+			const store1 = { localKeys: true }
+			const store2 = { localKeys: true }
+			const key = '1.2.3.4'
+
+			validations.singleCount(request as any, store1 as Store, key)
+			validations2.singleCount(request as any, store2 as Store, key)
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it('should log an error if a request is double-counted with separate instances of an external store', () => {
+			const request = {}
+			const store1 = new TestExternalStore()
+			const store2 = new TestExternalStore()
+			const key = '1.2.3.4'
+
+			validations.singleCount(request as any, store1 as Store, key)
+			validations2.singleCount(request as any, store2 as Store, key)
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({
+					code: 'ERR_ERL_DOUBLE_COUNT',
+				}),
+			)
+		})
+
+		it('should not log an error for multiple requests from the same key', () => {
+			const request1 = {}
+			const request2 = {}
+			const store = { localKeys: true }
+			const key = '1.2.3.4'
+
+			validations.singleCount(request1 as any, store as Store, key)
+			expect(logger.error).not.toHaveBeenCalled()
+			validations2.singleCount(request2 as any, store as Store, key)
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it('should not log an error if a request is double-counted with separate instances of an external store with different prefixes', () => {
+			const request = {}
+			const store1 = new TestExternalStore()
+			store1.prefix = 's1'
+			const store2 = new TestExternalStore()
+			store2.prefix = 's2'
+			const key = '1.2.3.4'
+
+			validations.singleCount(request as any, store1 as Store, key)
+			validations2.singleCount(request as any, store2 as Store, key)
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+	})
+
+	describe('limit', () => {
+		it('should log a warning if max is set to 0', () => {
+			validations.limit(0)
+			expect(logger.warn).toHaveBeenCalled()
+		})
+
+		it('should not log a warning if max is set to a non zero number', () => {
+			validations.limit(3)
+			expect(logger.warn).not.toHaveBeenCalled()
+		})
+	})
+
+	describe('onLimitReached', () => {
+		it('should log a warning if onLimitReached is set', () => {
+			validations.onLimitReached(() => {})
+			expect(logger.warn).toHaveBeenCalled()
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it('should not log a warning if onLimitReached is unset', () => {
+			validations.onLimitReached(undefined)
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+	})
+
+	describe('draft_polli_ratelimit_headers', () => {
+		it('should log a warning if draft_polli_ratelimit_headers is set', () => {
+			validations.draftPolliHeaders(true)
+			expect(logger.warn).toHaveBeenCalled()
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it.each([
+			undefined,
+			false,
+		])('should not log a warning if draft_polli_ratelimit_headers is %s', (val) => {
+			validations.draftPolliHeaders(val)
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+	})
+
+	describe('headersDraftVersion', () => {
+		it('should log an error if standardHeaders is an unsupported version', () => {
+			validations.headersDraftVersion('draft-2')
+			expect(logger.error).toHaveBeenCalled()
+		})
+
+		it('should not log an error a valid version is passed as standardHeaders', () => {
+			validations.headersDraftVersion('draft-8')
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+	})
+
+	describe('headersResetTime', () => {
+		it('should log an error if resetTime is omitted', () => {
+			validations.headersResetTime(undefined)
+			expect(logger.error).toHaveBeenCalled()
+		})
+
+		it('should not log an error if resetTime is set', () => {
+			validations.headersResetTime(new Date())
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+	})
+
+	describe('knownOptions', () => {
+		it('should log an error if an unknown option is passed in', () => {
+			validations.knownOptions({ windowMS: 100 } as any)
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({ code: 'ERR_ERL_UNKNOWN_OPTION' }),
+			)
+		})
+	})
+
+	describe('validationsConfig', () => {
+		it('should log an error if an unknown validation is disabled', () => {
+			validations = getValidations({ invalid: false } as any, logger)
+
+			validations.validationsConfig()
+			expect(logger.error).toHaveBeenCalled()
+		})
+		it('should log an error if an unknown validation is enabled', () => {
+			validations = getValidations({ invalid: false } as any, logger)
+
+			validations.validationsConfig()
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({ code: 'ERR_ERL_UNKNOWN_VALIDATION' }),
+			)
+		})
+		it('should not log an error if only valid keys are set', () => {
+			validations = getValidations(
+				{
+					ip: false,
+					positiveHits: true,
+					default: false,
+				},
+				logger,
+			)
+
+			validations.validationsConfig()
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+		it('should not run if disabled by config', () => {
+			validations = getValidations(
+				{
+					invalid: false,
+					validationsConfig: false,
+				} as any,
+				logger,
+			)
+
+			validations.validationsConfig()
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+		it('should not run if disabled by default', () => {
+			validations = getValidations(
+				{
+					invalid: true,
+					default: false,
+				} as any,
+				logger,
+			)
+
+			validations.validationsConfig()
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+		it('should run if enabled by config with default: false', () => {
+			validations = getValidations(
+				{
+					invalid: false,
+					validationsConfig: true,
+					default: false,
+				} as any,
+				logger,
+			)
+
+			validations.validationsConfig()
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({ code: 'ERR_ERL_UNKNOWN_VALIDATION' }),
+			)
+		})
+	})
+
+	describe('disable', () => {
+		it('should initialize disabled when passed false', () => {
+			const disabledValidator = getValidations(false, logger)
+
+			disabledValidator.ip('badip')
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it('should do nothing after disable() is called', () => {
+			validations.disable()
+
+			validations.ip('badip')
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+	})
+
+	describe('creationStack', () => {
+		it('should log an error if called in an express request handler with a memory store', async () => {
+			const app = express()
+			const store = new MemoryStore()
+
+			app.get('/', (request, response) => {
+				validations.creationStack(store)
+				response.send('hello')
+			})
+
+			await supertest(app).get('/').expect('hello')
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({
+					code: 'ERR_ERL_CREATED_IN_REQUEST_HANDLER',
+				}),
+			)
+			expect(logger.warn).not.toHaveBeenCalled()
+		})
+
+		it('should log a different error when used with an external store', async () => {
+			const app = express()
+			const store: Store = { localKeys: false } as any
+
+			app.get('/', (request, response) => {
+				validations.creationStack(store)
+				response.send('hello')
+			})
+
+			await supertest(app).get('/').expect('hello')
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({
+					code: 'ERR_ERL_CREATED_IN_REQUEST_HANDLER',
+				}),
+			)
+			expect(logger.warn).not.toHaveBeenCalled()
+		})
+
+		it('should not log an error if called elsewhere', async () => {
+			const store = new MemoryStore()
+
+			validations.creationStack(store)
+			expect(logger.error).not.toHaveBeenCalled()
+			expect(logger.warn).not.toHaveBeenCalled()
+		})
+	})
+
+	describe('ipv6Subnet', () => {
+		const validValues = []
+		for (let i = 32; i <= 64; i++) {
+			validValues.push(i)
+		}
+		it.each(
+			validValues,
+		)('should allow numbers in the 32-64 range: %d', (subnet) => {
+			validations.ipv6Subnet(subnet)
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it('should allow false', () => {
+			validations.ipv6Subnet(false)
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it('should error on numbers below 32', () => {
+			validations.ipv6Subnet(31)
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({ code: 'ERR_ERL_IPV6_SUBNET' }),
+			)
+		})
+
+		it('should error on numbers above 64', () => {
+			validations.ipv6Subnet(65)
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({ code: 'ERR_ERL_IPV6_SUBNET' }),
+			)
+		})
+
+		it('should error on non-integer numbers', () => {
+			validations.ipv6Subnet(48.5)
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({ code: 'ERR_ERL_IPV6_SUBNET' }),
+			)
+		})
+
+		it('should error on undefined (return value from configured function)', () => {
+			validations.ipv6Subnet(undefined)
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({ code: 'ERR_ERL_IPV6_SUBNET' }),
+			)
+		})
+	})
+
+	describe('ipv6SubnetOrKeyGenerator', () => {
+		it.each([
+			{},
+			{ ipv6Subnet: 64 },
+			{ keyGenerator: (request, response) => 'global' } as Options,
+		])('should allow one or the other (or none): %j', (options) => {
+			validations.ipv6SubnetOrKeyGenerator(options)
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it('should warn on both', () => {
+			validations.ipv6SubnetOrKeyGenerator({
+				ipv6Subnet: 64,
+				keyGenerator: (request, response) => 'global',
+			})
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({
+					code: 'ERR_ERL_IPV6SUBNET_OR_KEYGENERATOR',
+				}),
+			)
+		})
+
+		it('should warn on both when ipv6Subnet is false', () => {
+			validations.ipv6SubnetOrKeyGenerator({
+				ipv6Subnet: false,
+				keyGenerator: (request, response) => 'global',
+			})
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({
+					code: 'ERR_ERL_IPV6SUBNET_OR_KEYGENERATOR',
+				}),
+			)
+		})
+	})
+
+	describe('keyGeneratorIpFallback', () => {
+		it('should skip on undefined keyGenerator', () => {
+			validations.keyGeneratorIpFallback(undefined)
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it('should not warn on a keyGenerator that does not use req.ip or request.ip', () => {
+			validations.keyGeneratorIpFallback(
+				(request: any, response: any): string =>
+					request.params.apikey as string,
+			)
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it('should warn on a keyGenerator that uses req.ip', () => {
+			validations.keyGeneratorIpFallback(
+				(request: any, response: any): string =>
+					(request.params.apikey || request.ip) as string,
+			)
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({ code: 'ERR_ERL_KEY_GEN_IPV6' }),
+			)
+		})
+
+		it('should warn on a keyGenerator that uses request.ip', () => {
+			validations.keyGeneratorIpFallback(
+				(request: any, response: any) =>
+					(request.params.apikey || request.ip) as string,
+			)
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({ code: 'ERR_ERL_KEY_GEN_IPV6' }),
+			)
+		})
+
+		it('should not warn on a keyGenerator that uses request.ip and ipKeyGenerator', () => {
+			validations.keyGeneratorIpFallback(
+				(request: any, response: any): string =>
+					(request.params.apikey as string) || ipKeyGenerator(request.ip),
+			)
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+	})
+
+	describe('windowMs', () => {
+		it('should not warn on in-range values', () => {
+			validations.windowMs(5 * 60 * 1000)
+			expect(logger.warn).not.toHaveBeenCalled()
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it('should warn on large values', () => {
+			validations.windowMs(30 * 24 * 60 * 60 * 1000)
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({ code: 'ERR_ERL_WINDOW_MS' }),
+			)
+		})
+	})
+})

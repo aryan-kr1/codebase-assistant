@@ -1,0 +1,1399 @@
+// /test/middleware-test.ts
+// Tests the rate limiting middleware
+
+import { EventEmitter } from 'node:events'
+import HTTP from 'node:http'
+import type { AddressInfo } from 'node:net'
+
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	jest,
+} from '@jest/globals'
+import type { NextFunction, Request, Response } from 'express'
+import { agent as request } from 'supertest'
+import rateLimit, {
+	type ClientRateLimitInfo,
+	type IncrementCallback,
+	type LegacyStore,
+	type Logger,
+	MemoryStore,
+	type Options,
+	type Store,
+} from '../../source/index.js'
+import { createServer } from './helpers/create-server.js'
+
+describe('middleware test', () => {
+	beforeEach(() => {
+		jest.useFakeTimers()
+	})
+	afterEach(() => {
+		jest.useRealTimers()
+		jest.restoreAllMocks()
+	})
+
+	class MockStore implements Store {
+		initWasCalled = false
+		incrementWasCalled = false
+		decrementWasCalled = false
+		resetKeyWasCalled = false
+		getWasCalled = false
+		resetAllWasCalled = false
+
+		counter = 0
+		windowMs = 0
+
+		init(options: Options): void {
+			this.initWasCalled = true
+			this.windowMs = options.windowMs
+		}
+
+		async get(_key: string): Promise<ClientRateLimitInfo> {
+			this.getWasCalled = true
+
+			return { totalHits: this.counter, resetTime: undefined }
+		}
+
+		async increment(_key: string): Promise<ClientRateLimitInfo> {
+			this.counter += 1
+			this.incrementWasCalled = true
+
+			return {
+				totalHits: this.counter,
+				resetTime: new Date(Date.now() + this.windowMs),
+			}
+		}
+
+		async decrement(_key: string): Promise<void> {
+			this.counter -= 1
+			this.decrementWasCalled = true
+		}
+
+		async resetKey(_key: string): Promise<void> {
+			this.resetKeyWasCalled = true
+		}
+
+		async resetAll(): Promise<void> {
+			this.resetAllWasCalled = true
+		}
+	}
+
+	class MockLegacyStore implements LegacyStore {
+		initWasCalled = false
+		incrementWasCalled = false
+		decrementWasCalled = false
+		resetKeyWasCalled = false
+		resetAllWasCalled = false
+
+		counter = 0
+
+		incr(_key: string, callback: IncrementCallback) {
+			this.counter += 1
+			this.incrementWasCalled = true
+
+			callback(undefined, this.counter, undefined)
+		}
+
+		decrement(_key: string): void {
+			this.counter -= 1
+			this.decrementWasCalled = true
+		}
+
+		resetKey(_key: string): void {
+			this.resetKeyWasCalled = true
+		}
+
+		resetAll(): void {
+			this.resetAllWasCalled = true
+		}
+	}
+
+	class MockBackwardCompatibleStore implements Store, LegacyStore {
+		initWasCalled = false
+		incrementWasCalled = false
+		decrementWasCalled = false
+		resetKeyWasCalled = false
+		getWasCalled = false
+		resetAllWasCalled = false
+
+		counter = 0
+
+		incr(_key: string, callback: IncrementCallback) {
+			this.counter += 1
+			this.incrementWasCalled = true
+
+			callback(undefined, this.counter, undefined)
+		}
+
+		async get(_key: string): Promise<ClientRateLimitInfo> {
+			this.getWasCalled = true
+
+			return { totalHits: this.counter, resetTime: undefined }
+		}
+
+		async increment(_key: string): Promise<ClientRateLimitInfo> {
+			this.counter += 1
+			this.incrementWasCalled = true
+
+			return { totalHits: this.counter, resetTime: undefined }
+		}
+
+		decrement(_key: string): void {
+			this.counter -= 1
+			this.decrementWasCalled = true
+		}
+
+		resetKey(_key: string): void {
+			this.resetKeyWasCalled = true
+		}
+
+		resetAll(): void {
+			this.resetAllWasCalled = true
+		}
+	}
+
+	class StoreThrowingErrors implements Store {
+		init(_options: Options): void {}
+
+		async get(_key: string): Promise<ClientRateLimitInfo> {
+			throw new Error('Mock error')
+		}
+
+		async increment(_key: string): Promise<ClientRateLimitInfo> {
+			throw new Error('Mock error')
+		}
+
+		async decrement(_key: string): Promise<void> {}
+
+		async resetKey(_key: string): Promise<void> {}
+
+		async resetAll(): Promise<void> {}
+	}
+
+	it('should not modify the options object passed', () => {
+		const options = {}
+		rateLimit(options)
+		expect(options).toStrictEqual({})
+	})
+
+	it('should call `init` even if no requests have come in', async () => {
+		const store = new MockStore()
+		rateLimit({
+			store,
+		})
+
+		expect(store.initWasCalled).toEqual(true)
+	})
+
+	describe('async store init', () => {
+		let logger: Logger
+
+		beforeEach(() => {
+			logger = {
+				error: jest.fn(),
+				warn: jest.fn(),
+			}
+			jest.useRealTimers()
+		})
+
+		class MockStoreAsyncInitResolving extends MockStore {
+			initWasCalled = false
+
+			init(_options: Options): Promise<void> {
+				this.initWasCalled = true
+				return Promise.resolve()
+			}
+		}
+
+		class MockStoreAsyncInitRejecting extends MockStore {
+			initWasCalled = false
+
+			init(_options: Options): Promise<void> {
+				this.initWasCalled = true
+				return Promise.reject(new Error('Async init error'))
+			}
+		}
+
+		it('should handle resolving async init', async () => {
+			const store = new MockStoreAsyncInitResolving()
+			const limiter = rateLimit({
+				store,
+				logger,
+			})
+
+			await new Promise((resolve) => process.nextTick(resolve))
+
+			expect(limiter).not.toBeInstanceOf(Promise)
+			expect(store.initWasCalled).toEqual(true)
+			expect(logger.error).not.toHaveBeenCalled()
+		})
+
+		it('should handle rejecting async init and log error', async () => {
+			const store = new MockStoreAsyncInitRejecting()
+			const limiter = rateLimit({
+				store,
+				logger,
+			})
+
+			await new Promise((resolve) => process.nextTick(resolve))
+
+			expect(limiter).not.toBeInstanceOf(Promise)
+			expect(store.initWasCalled).toEqual(true)
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.any(Error),
+				'express-rate-limit: async error during store initialization.',
+			)
+		})
+
+		it('should catch synchronous errors thrown from store.init()', () => {
+			const store = new MockStore()
+			jest.spyOn(store, 'init').mockImplementation(() => {
+				throw new Error('test error')
+			})
+			const limiter = rateLimit({
+				store,
+				logger,
+			})
+
+			expect(limiter).not.toBeInstanceOf(Promise)
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.any(Error),
+				'express-rate-limit: error during store initialization.',
+			)
+		})
+	})
+
+	it('should let the first request through', async () => {
+		const app = createServer(rateLimit({ limit: 1 }))
+
+		await request(app).get('/').expect(200).expect('Hi there!')
+	})
+
+	it('should refuse additional connections once IP has reached the max', async () => {
+		const app = createServer(
+			rateLimit({
+				limit: 2,
+			}),
+		)
+
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(429)
+	})
+
+	it('should (eventually) accept new connections from a blocked IP', async () => {
+		const app = createServer(
+			rateLimit({
+				limit: 2,
+				windowMs: 50,
+			}),
+		)
+
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(429)
+		jest.advanceTimersByTime(60)
+		await request(app).get('/').expect(200)
+	})
+
+	it('should work repeatedly', async () => {
+		const app = createServer(
+			rateLimit({
+				limit: 2,
+				windowMs: 50,
+			}),
+		)
+
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(429)
+		jest.advanceTimersByTime(60)
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(429)
+		jest.advanceTimersByTime(60)
+		await request(app).get('/').expect(200)
+	})
+
+	it('should block all requests if max is set to 0', async () => {
+		const app = createServer(rateLimit({ max: 0, validate: { limit: false } }))
+
+		await request(app).get('/').expect(429)
+	})
+
+	it('should show the provided message instead of the default message when max connections are reached', async () => {
+		const message = 'Enhance your calm'
+		const app = createServer(
+			rateLimit({
+				windowMs: 1000,
+				limit: 2,
+				message,
+			}),
+		)
+
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(429).expect(message)
+	})
+
+	it('should allow the error status code to be customized', async () => {
+		const statusCode = 420
+		const app = createServer(
+			rateLimit({
+				limit: 1,
+				statusCode,
+			}),
+		)
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(statusCode)
+	})
+
+	it('should allow responding with a JSON message', async () => {
+		const message = {
+			error: {
+				code: 'too-many-requests',
+				message: 'Too many requests were attempted in a short span of time.',
+			},
+		}
+		const app = createServer(
+			rateLimit({
+				message,
+				limit: 1,
+			}),
+		)
+
+		await request(app).get('/').expect(200, 'Hi there!')
+		await request(app).get('/').expect(429, message)
+	})
+
+	it('should allow message to be a function', async () => {
+		const app = createServer(
+			rateLimit({
+				message: () => 'Too many requests.',
+				limit: 1,
+			}),
+		)
+
+		await request(app).get('/').expect(200, 'Hi there!')
+		await request(app).get('/').expect(429, 'Too many requests.')
+	})
+
+	it('should allow message to be a function that returns a promise', async () => {
+		const app = createServer(
+			rateLimit({
+				message: async () => 'Too many requests.',
+				limit: 1,
+			}),
+		)
+
+		await request(app).get('/').expect(200, 'Hi there!')
+		await request(app).get('/').expect(429, 'Too many requests.')
+	})
+
+	it('should use a custom handler when specified', async () => {
+		const app = createServer(
+			rateLimit({
+				limit: 1,
+				handler(_request, response) {
+					response.status(420).end('Enhance your calm')
+				},
+			}),
+		)
+
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(420, 'Enhance your calm')
+	})
+
+	it.each([
+		[
+			'async handler',
+			(error: Error): Partial<Options> => ({
+				async handler() {
+					await Promise.resolve()
+					throw error
+				},
+			}),
+		],
+		[
+			'synchronous message',
+			(error: Error): Partial<Options> => ({
+				message() {
+					throw error
+				},
+			}),
+		],
+		[
+			'async message',
+			(error: Error): Partial<Options> => ({
+				async message() {
+					await Promise.resolve()
+					throw error
+				},
+			}),
+		],
+	])('should forward errors from %s using `next()`', async (_name, getOptions) => {
+		jest.useRealTimers()
+		const error = new Error('Could not build the rate limit response')
+		const app = createServer(rateLimit({ limit: 1, ...getOptions(error) }))
+		const errorHandler = jest.fn(
+			(
+				error: Error,
+				_request: Request,
+				response: Response,
+				_next: NextFunction,
+			) => {
+				response.status(500).send(error.message)
+			},
+		)
+		app.use(errorHandler)
+
+		await request(app).get('/').expect(200)
+		expect(errorHandler).not.toHaveBeenCalled()
+
+		await request(app)
+			.get('/')
+			.timeout({ response: 1000 })
+			.expect(500, error.message)
+		expect(errorHandler).toHaveBeenCalledTimes(1)
+		expect(errorHandler.mock.calls[0][0]).toBe(error)
+	})
+
+	it('should allow custom key generators', async () => {
+		const app = createServer(
+			rateLimit({
+				limit: 2,
+				keyGenerator: (request, _response) => request.query.key as string,
+			}),
+		)
+
+		await request(app).get('/').query({ key: 1 }).expect(200)
+		await request(app).get('/').query({ key: 1 }).expect(200)
+
+		await request(app).get('/').query({ key: 2 }).expect(200)
+
+		await request(app).get('/').query({ key: 1 }).expect(429)
+
+		await request(app).get('/').query({ key: 2 }).expect(200)
+		await request(app).get('/').query({ key: 2 }).expect(429)
+	})
+
+	it('should allow custom skip function', async () => {
+		const app = createServer(
+			rateLimit({
+				limit: 2,
+				skip: () => true,
+			}),
+		)
+
+		await request(app).get('/').query({ key: 1 }).expect(200)
+		await request(app).get('/').query({ key: 1 }).expect(200)
+
+		await request(app).get('/').query({ key: 1 }).expect(200)
+	})
+
+	it('should allow custom skip function that returns a promise', async () => {
+		const limiter = rateLimit({
+			limit: 2,
+			skip: async () => true,
+		})
+
+		const app = createServer(limiter)
+		await request(app).get('/').query({ key: 1 }).expect(200)
+		await request(app).get('/').query({ key: 1 }).expect(200)
+
+		await request(app).get('/').query({ key: 1 }).expect(200)
+	})
+
+	it('should allow max to be a function', async () => {
+		const app = createServer(
+			rateLimit({
+				limit: () => 2,
+			}),
+		)
+
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(429)
+	})
+
+	it('should allow max to be a function that returns a promise', async () => {
+		const app = createServer(
+			rateLimit({
+				limit: async () => 2,
+			}),
+		)
+
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(429)
+	})
+
+	it('should calculate the remaining hits', async () => {
+		const app = createServer(
+			rateLimit({
+				limit: async () => 2,
+			}),
+		)
+
+		await request(app)
+			.get('/')
+			.expect(200)
+			.expect('x-ratelimit-limit', '2')
+			.expect('x-ratelimit-remaining', '1')
+			.expect((response) => {
+				if ('retry-after' in response.headers) {
+					throw new Error(
+						`Expected no retry-after header, got ${response.headers['retry-after']}`,
+					)
+				}
+			})
+			.expect(200, 'Hi there!')
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should call `increment` on the store (%s store)', async (name, store) => {
+		const app = createServer(
+			rateLimit({
+				store,
+			}),
+		)
+		await request(app).get('/')
+
+		expect(store.incrementWasCalled).toEqual(true)
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should call `resetKey` on the store (%s store)', async (name, store) => {
+		const limiter = rateLimit({
+			store,
+		})
+
+		limiter.resetKey('key')
+
+		expect(store.resetKeyWasCalled).toEqual(true)
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should call `get` on the store (%s store)', async (name, store) => {
+		const limiter = rateLimit({
+			store,
+		})
+
+		const response = await limiter.getKey('key')
+
+		expect(store.getWasCalled).toEqual(true)
+		expect(typeof response?.totalHits).toBe('number')
+	})
+
+	it.each([
+		['legacy', new MockLegacyStore()],
+	])('should throw an error if `get` does not exist on the store (%s store)', async (name, store) => {
+		const limiter = rateLimit({
+			store,
+		})
+
+		expect(limiter.getKey).toThrow()
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should decrement hits when requests succeed and `skipSuccessfulRequests` is set to true (%s store)', async (name, store) => {
+		const app = createServer(
+			rateLimit({
+				skipSuccessfulRequests: true,
+				store,
+			}),
+		)
+
+		await request(app).get('/').expect(200)
+
+		expect(store.decrementWasCalled).toEqual(true)
+	})
+
+	it('should decrement hits when request finishes before `resetTime` with `skipSuccessfulRequests`', async () => {
+		const windowMs = 500
+		const requestDurationMs = 25
+		const store = new MockStore()
+
+		const app = createServer([
+			rateLimit({
+				skipSuccessfulRequests: true,
+				windowMs,
+				store,
+			}),
+			(_request, _response, next) => {
+				setTimeout(next, requestDurationMs)
+				jest.runAllTimers()
+			},
+		])
+
+		await request(app).get('/').expect(200)
+
+		expect(store.decrementWasCalled).toEqual(true)
+	})
+
+	it('should not decrement hits when request finishes after `resetTime` with `skipSuccessfulRequests`', async () => {
+		const windowMs = 50
+		const requestDurationMs = 75
+		const store = new MockStore()
+
+		const app = createServer([
+			rateLimit({
+				skipSuccessfulRequests: true,
+				windowMs,
+				store,
+			}),
+			(_request, _response, next) => {
+				setTimeout(next, requestDurationMs)
+				jest.runAllTimers()
+			},
+		])
+
+		await request(app).get('/').expect(200)
+
+		expect(store.decrementWasCalled).toEqual(false)
+	})
+
+	it('should not decrement hits when request finishes after window reset with real MemoryStore and skipFailedRequests', async () => {
+		// Real timers are required here because supertest's HTTP layer uses
+		// its own timers that are not affected by jest.useFakeTimers().
+		// With fake timers, requests hang indefinitely.
+		jest.useRealTimers()
+		// window 2 must still be active when request A finishes, so:
+		// 2*windowMs + buffer > requestDuration
+		const windowMs = 100
+		const requestDurationMs = 200
+		const store = new MemoryStore()
+		// Extra buffer beyond windowMs to ensure the window has definitely reset
+		// before request B arrives (real timers are imprecise).
+		const windowBufferMs = 50
+
+		const app = createServer(
+			rateLimit({
+				skipFailedRequests: true,
+				windowMs,
+				limit: 1,
+				store,
+			}),
+		)
+
+		app.get('/slow-fail', (_request, response) => {
+			setTimeout(() => {
+				response.status(500).end('failed')
+			}, requestDurationMs)
+		})
+		app.get('/fast', (_request, response) => {
+			response.status(200).end('ok')
+		})
+
+		// Request A starts in window 1
+		const pA = request(app)
+			.get('/slow-fail')
+			.catch(() => {})
+
+		// Move past window 1, but before A finishes
+		await new Promise((r) => setTimeout(r, windowMs + windowBufferMs))
+
+		// Request B comes in after window 1 reset - starts window 2
+		await request(app).get('/fast').expect(200)
+
+		// Wait for A to finish (it will try to decrement, but should be skipped
+		// because the copied resetTime from window 1 has already passed)
+		await pA
+
+		// Request C arrives within window 2 - should be rate limited
+		// because B already used the single slot and A's decrement was skipped.
+		await request(app).get('/fast').expect(429)
+
+		store.shutdown()
+		jest.useFakeTimers()
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should not decrement hits when requests fail and `skipSuccessfulRequests` is set to true (%s store)', async (name, store) => {
+		const app = createServer(
+			rateLimit({
+				skipSuccessfulRequests: true,
+				store,
+			}),
+		)
+
+		await request(app).get('/error').expect(400)
+
+		expect(store.decrementWasCalled).toEqual(false)
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should decrement hits when requests succeed, `skipSuccessfulRequests` is set to true and a custom `requestWasSuccessful` method used (%s store)', async (name, store) => {
+		const app = createServer(
+			rateLimit({
+				skipSuccessfulRequests: true,
+				requestWasSuccessful: (_request, response) =>
+					response.statusCode === 200,
+				store,
+			}),
+		)
+
+		await request(app).get('/').expect(200)
+		expect(store.decrementWasCalled).toEqual(true)
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should not decrement hits when requests fail, `skipSuccessfulRequests` is set to true and a custom `requestWasSuccessful` method used (%s store)', async (name, store) => {
+		const app = createServer(
+			rateLimit({
+				skipSuccessfulRequests: true,
+				requestWasSuccessful(request, response) {
+					return response.statusCode === 200
+				},
+				store,
+			}),
+		)
+
+		await request(app).get('/error').expect(400)
+
+		expect(store.decrementWasCalled).toEqual(false)
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should decrement hits when requests succeed, `skipSuccessfulRequests` is set to true and a custom `requestWasSuccessful` method used (%s store)', async (name, store) => {
+		const app = createServer(
+			rateLimit({
+				skipSuccessfulRequests: true,
+				requestWasSuccessful: (request, _response) =>
+					request.query.success === '1',
+				store,
+			}),
+		)
+
+		await request(app).get('/?success=1')
+
+		expect(store.decrementWasCalled).toEqual(true)
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should not decrement hits when requests fail, `skipSuccessfulRequests` is set to true and a custom `requestWasSuccessful` method used (%s store)', async (name, store) => {
+		const app = createServer(
+			rateLimit({
+				skipSuccessfulRequests: true,
+				requestWasSuccessful: (request, _response) =>
+					request.query.success === '1',
+				store,
+			}),
+		)
+
+		await request(app).get('/?success=0')
+
+		expect(store.decrementWasCalled).toEqual(false)
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should decrement hits when requests fail and `skipFailedRequests` is set to true (%s store)', async (name, store) => {
+		const app = createServer(
+			rateLimit({
+				skipFailedRequests: true,
+				store,
+			}),
+		)
+
+		await request(app).get('/error').expect(400)
+
+		expect(store.decrementWasCalled).toEqual(true)
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should not decrement hits when requests succeed and `skipFailedRequests` is set to true (%s store)', async (name, store) => {
+		const app = createServer(
+			rateLimit({
+				skipFailedRequests: true,
+				store,
+			}),
+		)
+
+		await request(app).get('/').expect(200)
+
+		expect(store.decrementWasCalled).toEqual(false)
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should decrement hits when requests fail, `skipFailedRequests` is set to true and a custom `requestWasSuccessful` method used that returns a promise (%s store)', async (name, store) => {
+		const app = createServer(
+			rateLimit({
+				skipFailedRequests: true,
+				requestWasSuccessful: async () => false,
+				store,
+			}),
+		)
+
+		await request(app).get('/').expect(200)
+		expect(store.decrementWasCalled).toEqual(true)
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should decrement hits when response closes and `skipFailedRequests` is set to true (%s store) (server)', async (name, store) => {
+		jest.useRealTimers()
+
+		const app = createServer(
+			rateLimit({
+				skipFailedRequests: true,
+				store,
+			}),
+		)
+
+		let received: () => void
+		const connectionOpened = new Promise<void>((resolve) => {
+			received = resolve
+		})
+		let closed: () => void
+		const connectionClosed = new Promise<void>((resolve) => {
+			closed = resolve
+		})
+		app.get('/hang-server', (request, _response) => {
+			received()
+			request.on('close', closed)
+		})
+
+		// starting with node.js v26.3.0, the supertest .timeout() method no longer works for this test, so we're skipping supertest and spinning up an actual http server and then making a request to it instead.
+		// see https://github.com/forwardemail/supertest/issues/891
+
+		let setListening: () => void
+		const listening = new Promise<void>((resolve) => {
+			setListening = resolve
+		})
+		const listener = app.listen((err) => {
+			if (err) {
+				console.error('Error starting server:', err)
+				throw err
+			}
+			setListening()
+		})
+		listener.unref() // don't keep the process from exiting if the test fails
+		await listening
+
+		const { address, port } = listener.address() as AddressInfo
+		expect(address).toBeDefined()
+		expect(port).toBeDefined()
+
+		const responseHandler = jest.fn()
+		// wrap address in [] because it's often an IPv6 address (which uses :'s instead of .'s to separate sections)
+		const hangRequest = HTTP.get(
+			`http://[${address}]:${port}/hang-server`,
+			responseHandler,
+		)
+
+		await connectionOpened
+
+		hangRequest.on('error', (_error) => {
+			/* expected, but if we don't add a listener, the test fails */
+		})
+		hangRequest.destroy()
+
+		await connectionClosed
+		listener.close() // shutdown the server
+
+		expect(store.decrementWasCalled).toEqual(true)
+		expect(responseHandler).not.toHaveBeenCalled() // this indicates we got a server response, which means something went wrong with this test
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should decrement hits when response closes and `skipFailedRequests` is set to true (%s store)', async (name, store) => {
+		const middleware = rateLimit({
+			skipFailedRequests: true,
+			store,
+		})
+
+		// Minimal request/response mocks so we can emit `close` without spinning up a server
+		const mockedRequest = {
+			ip: '127.0.0.1',
+			method: 'GET',
+			path: '/',
+			url: '/',
+			headers: {},
+			app: { get: () => false },
+		} as unknown as Request
+
+		const mockedResponse = Object.assign(new EventEmitter(), {
+			statusCode: 200,
+			writableEnded: false,
+			setHeader: jest.fn(),
+			getHeader: jest.fn(),
+			end: jest.fn(),
+		}) as unknown as Response
+
+		const next = jest.fn()
+
+		// Start the middleware so we can await its completion
+		const middlewarePromise = middleware(mockedRequest, mockedResponse, next)
+
+		// Simulate the connection closing before the response finishes
+		mockedResponse.emit('close')
+
+		// Wait for the middleware to finish processing
+		await middlewarePromise
+
+		expect(store.decrementWasCalled).toEqual(true)
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should decrement hits when response emits an error and `skipFailedRequests` is set to true (%s store)', async (name, store) => {
+		const app = createServer(
+			rateLimit({
+				skipFailedRequests: true,
+				store,
+			}),
+		)
+
+		await request(app).get('/crash')
+
+		expect(store.decrementWasCalled).toEqual(true)
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should decrement hits when rate limit is reached and `skipFailedRequests` is set to true (%s store)', async (name, store) => {
+		const app = createServer(
+			rateLimit({
+				limit: 2,
+				store,
+				skipFailedRequests: true,
+			}),
+		)
+
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(429)
+
+		expect(store.decrementWasCalled).toEqual(true)
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should forward errors in the handler using `next()` (%s store)', async (name, store) => {
+		let errorCaught = false
+
+		const app = createServer(
+			rateLimit({
+				limit: 1,
+				store,
+				handler() {
+					const exception = new Error('420: Enhance your calm')
+					throw exception
+				},
+			}),
+		)
+
+		app.use(
+			(
+				error: Error,
+				_request: Request,
+				response: Response,
+				_next: NextFunction,
+			) => {
+				errorCaught = true
+				response.status(500).send(error.message)
+			},
+		)
+
+		await request(app).get('/').expect(200)
+		await request(app).get('/').expect(500)
+
+		expect(errorCaught).toEqual(true)
+	})
+
+	it.each([
+		['modern', new MockStore()],
+		['legacy', new MockLegacyStore()],
+		['compat', new MockBackwardCompatibleStore()],
+	])('should forward errors in `skip()` using `next()` (%s store)', async (name, store) => {
+		let errorCaught = false
+
+		const app = createServer(
+			rateLimit({
+				limit: 1,
+				store,
+				skip() {
+					const exception = new Error('420: Enhance your calm')
+					throw exception
+				},
+			}),
+		)
+
+		app.use(
+			(
+				error: Error,
+				_request: Request,
+				response: Response,
+				_next: NextFunction,
+			) => {
+				errorCaught = true
+				response.status(500).send(error.message)
+			},
+		)
+
+		await request(app).get('/').expect(500)
+
+		expect(errorCaught).toEqual(true)
+	})
+
+	it('should pass the number of hits and the limit to the next request handler in the `request.rateLimit` property', async () => {
+		let savedRequestObject: any
+		const saveRequestObject = (
+			request: Request,
+			_response: Response,
+			next: NextFunction,
+		) => {
+			savedRequestObject = request
+
+			next()
+		}
+
+		const app = createServer([
+			saveRequestObject,
+			rateLimit({
+				legacyHeaders: false,
+				limit: 6,
+			}),
+		])
+
+		await request(app).get('/').expect(200)
+		expect(savedRequestObject?.rateLimit).toMatchObject({
+			limit: 6,
+			used: 1,
+			remaining: 5,
+			resetTime: expect.any(Date),
+		})
+
+		// Make sure the hidden property is also set.
+		expect(savedRequestObject?.rateLimit.current).toBe(1)
+
+		savedRequestObject = undefined
+		await request(app).get('/').expect(200)
+		expect(savedRequestObject?.rateLimit).toMatchObject({
+			limit: 6,
+			used: 2,
+			remaining: 4,
+			resetTime: expect.any(Date),
+		})
+		expect(savedRequestObject?.rateLimit.current).toBe(2)
+	})
+
+	it('should pass the number of hits and the limit to the next request handler with a custom property', async () => {
+		let savedRequestObject: any
+		const saveRequestObject = (
+			request: Request,
+			_response: Response,
+			next: NextFunction,
+		) => {
+			savedRequestObject = request
+
+			next()
+		}
+
+		const app = createServer([
+			saveRequestObject,
+			rateLimit({
+				legacyHeaders: false,
+				requestPropertyName: 'rateLimitInfo',
+			}),
+		])
+
+		await request(app).get('/').expect(200)
+		expect(savedRequestObject?.rateLimitInfo).toMatchObject({
+			limit: 5,
+			used: 1,
+			remaining: 4,
+			resetTime: expect.any(Date),
+		})
+		expect(savedRequestObject?.rateLimitInfo.current).toBe(1)
+
+		savedRequestObject = undefined
+		await request(app).get('/').expect(200)
+		expect(savedRequestObject?.rateLimitInfo).toMatchObject({
+			limit: 5,
+			used: 2,
+			remaining: 3,
+			resetTime: expect.any(Date),
+		})
+		expect(savedRequestObject?.rateLimitInfo.current).toBe(2)
+	})
+
+	it('should handle two rate-limiters with different `requestPropertyNames` operating independently', async () => {
+		const keyLimiter = rateLimit({
+			limit: 2,
+			requestPropertyName: 'rateLimitKey',
+			keyGenerator: (request) => request.query.key as string,
+			handler(_request, response) {
+				response.status(420).end('Enhance your calm')
+			},
+		})
+		const globalLimiter = rateLimit({
+			limit: 5,
+			requestPropertyName: 'rateLimitGlobal',
+			keyGenerator: () => 'global',
+			handler(_request, response) {
+				response.status(429).end('Too many requests')
+			},
+		})
+
+		let savedRequestObject: any
+		const saveRequestObject = (
+			request: Request,
+			_response: Response,
+			next: NextFunction,
+		) => {
+			savedRequestObject = request
+			next()
+		}
+
+		const app = createServer([saveRequestObject, keyLimiter, globalLimiter])
+
+		await request(app).get('/').query({ key: 1 }).expect(200)
+		expect(savedRequestObject).toBeTruthy()
+		expect(savedRequestObject.rateLimit).toBeUndefined()
+
+		expect(savedRequestObject.rateLimitKey).toBeTruthy()
+		expect(savedRequestObject.rateLimitKey.limit).toEqual(2)
+		expect(savedRequestObject.rateLimitKey.remaining).toEqual(1)
+
+		expect(savedRequestObject.rateLimitGlobal).toBeTruthy()
+		expect(savedRequestObject.rateLimitGlobal.limit).toEqual(5)
+		expect(savedRequestObject.rateLimitGlobal.remaining).toEqual(4)
+
+		savedRequestObject = undefined
+		await request(app).get('/').query({ key: 2 }).expect(200)
+		expect(savedRequestObject.rateLimitKey.remaining).toEqual(1)
+		expect(savedRequestObject.rateLimitGlobal.remaining).toEqual(3)
+
+		savedRequestObject = undefined
+		await request(app).get('/').query({ key: 1 }).expect(200)
+		expect(savedRequestObject.rateLimitKey.remaining).toEqual(0)
+		expect(savedRequestObject.rateLimitGlobal.remaining).toEqual(2)
+
+		savedRequestObject = undefined
+		await request(app).get('/').query({ key: 2 }).expect(200)
+		expect(savedRequestObject.rateLimitKey.remaining).toEqual(0)
+		expect(savedRequestObject.rateLimitGlobal.remaining).toEqual(1)
+
+		savedRequestObject = undefined
+		await request(app)
+			.get('/')
+			.query({ key: 1 })
+			.expect(420, 'Enhance your calm')
+		expect(savedRequestObject.rateLimitKey.remaining).toEqual(0)
+
+		savedRequestObject = undefined
+		await request(app).get('/').query({ key: 3 }).expect(200)
+		await request(app)
+			.get('/')
+			.query({ key: 3 })
+			.expect(429, 'Too many requests')
+		expect(savedRequestObject.rateLimitKey.remaining).toEqual(0)
+		expect(savedRequestObject.rateLimitGlobal.remaining).toEqual(0)
+	})
+
+	it('should not pass if the store throws an error by default', async () => {
+		const app = createServer(
+			rateLimit({
+				limit: 1,
+				store: new StoreThrowingErrors(),
+			}),
+		)
+		await request(app).get('/').expect(500)
+	})
+
+	it('should pass if the store throws an error and passOnStoreError is true', async () => {
+		jest.spyOn(console, 'error').mockImplementation(() => {})
+		const app = createServer(
+			rateLimit({
+				limit: 1,
+				store: new StoreThrowingErrors(),
+				passOnStoreError: true,
+			}),
+		)
+		await request(app).get('/').expect(200)
+		expect(console.error).toHaveBeenCalledTimes(1)
+		expect(console.error).toHaveBeenCalledWith(
+			expect.stringContaining('allowing'),
+			expect.any(Error),
+		)
+	})
+
+	it('should only call next once when passOnStoreError causes it to skip limiting', async () => {
+		jest.spyOn(console, 'error').mockImplementation(() => {})
+		const limiter = rateLimit({
+			limit: 1,
+			store: new StoreThrowingErrors(),
+			passOnStoreError: true,
+			validate: false,
+		})
+		const request = {}
+		const response = {}
+		const next: NextFunction = jest.fn() as NextFunction
+		await limiter(request as Request, response as Response, next)
+		expect(next).toHaveBeenCalledTimes(1)
+		expect(console.error).toHaveBeenCalledTimes(1)
+		expect(console.error).toHaveBeenCalledWith(
+			expect.stringContaining('allowing'),
+			expect.any(Error),
+		)
+	})
+
+	describe('with the logger set', () => {
+		let logger: Logger
+
+		beforeEach(() => {
+			logger = {
+				error: jest.fn(),
+				warn: jest.fn(),
+			}
+
+			jest.spyOn(console, 'error').mockImplementation(() => {})
+		})
+
+		it('should use the logger instead of the console on validation errors', async () => {
+			rateLimit({
+				logger,
+				ipv6Subnet: 48.5,
+			})
+
+			expect(console.error).not.toHaveBeenCalled()
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.objectContaining({ code: 'ERR_ERL_IPV6_SUBNET' }),
+			)
+		})
+
+		it('should use the logger instead of the console when the store throws an error and passOnStoreError is true', async () => {
+			const limiter = rateLimit({
+				limit: 1,
+				store: new StoreThrowingErrors(),
+				passOnStoreError: true,
+				validate: false,
+				logger,
+			})
+			const request = {}
+			const response = {}
+			await limiter(request as Request, response as Response, jest.fn())
+
+			expect(console.error).not.toHaveBeenCalled()
+			expect(logger.error).toHaveBeenCalledTimes(1)
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.any(Error),
+				expect.stringContaining('allowing'),
+			)
+		})
+
+		it('should log an error and not crash on unhandled rejection when store.decrement throws during skipFailedRequests', async () => {
+			jest.useRealTimers()
+			const store = {
+				async increment() {
+					return { totalHits: 1, resetTime: new Date(Date.now() + 60000) }
+				},
+				async decrement() {
+					throw new Error('Store decrement failed')
+				},
+				async resetKey() {},
+			}
+
+			const app = createServer(
+				rateLimit({
+					limit: 5,
+					store,
+					logger,
+					skipFailedRequests: true,
+				}),
+			)
+
+			await request(app).get('/error').expect(400)
+			await new Promise((resolve) => setTimeout(resolve, 50))
+
+			expect(logger.error).toHaveBeenCalledTimes(1)
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.any(Error),
+				'express-rate-limit: error from store during decrement.',
+			)
+		})
+
+		it('should log an error and not crash when requestWasSuccessful rejects', async () => {
+			jest.useRealTimers()
+			const store = {
+				async increment() {
+					return { totalHits: 1, resetTime: new Date(Date.now() + 60000) }
+				},
+				decrement: jest.fn(async () => {}),
+				async resetKey() {},
+			}
+
+			const app = createServer(
+				rateLimit({
+					limit: 5,
+					store,
+					logger,
+					skipFailedRequests: true,
+					requestWasSuccessful: async () => {
+						throw new Error('Async request check failed')
+					},
+				}),
+			)
+
+			await request(app).get('/').expect(200)
+			await new Promise((resolve) => setTimeout(resolve, 50))
+
+			expect(logger.error).toHaveBeenCalledTimes(1)
+			expect(logger.error).toHaveBeenCalledWith(
+				expect.any(Error),
+				'express-rate-limit: error in requestWasSuccessful callback.',
+			)
+			expect(store.decrement).not.toHaveBeenCalled()
+		})
+	})
+})

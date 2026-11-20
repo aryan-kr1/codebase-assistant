@@ -32,6 +32,8 @@ WORKDIR /app/rag-service
 COPY rag-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY rag-service/app ./app
+# Pre-built demo index (Gemini embeddings): part of the image, so it survives free-host sleep
+COPY rag-service/demo-data/ /app/rag-service/data/
 
 COPY --from=api /build/server /app/server
 COPY --from=web /build/client/dist /app/client/dist

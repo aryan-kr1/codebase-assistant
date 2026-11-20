@@ -1,0 +1,62 @@
+---
+title: 'Installation'
+icon: 'arrow-down-to-line'
+---
+
+This library can be installed from the
+[npm registry](https://npm.im/express-rate-limit), or from
+[github releases](https://github.com/express-rate-limit/express-rate-limit/releases).
+
+<Tabs>
+
+    <Tab title="npm">
+    	<CodeGroup>
+       		```sh npm
+       		npm install express-rate-limit
+       		```
+
+        	```sh yarn
+        	yarn add express-rate-limit
+        	```
+
+        	```sh pnpm
+        	pnpm add express-rate-limit
+        	```
+    	</CodeGroup>
+    </Tab>
+    <Tab title="GitHub Releases">
+    	<CodeGroup>
+       	```sh npm
+        > export VERSION=x.x.x
+       	> export URL="https://github.com/express-rate-limit/express-rate-limit/releases/download/v${VERSION}/express-rate-limit.tgz"
+       	> npm install $URL
+       	```
+
+        ```sh yarn
+        > export VERSION=x.x.x
+        > export URL="https://github.com/express-rate-limit/express-rate-limit/releases/download/v${VERSION}/express-rate-limit.tgz"
+        > yarn add $URL
+        ```
+
+        ```sh pnpm
+        > export VERSION=x.x.x
+        > export URL="https://github.com/express-rate-limit/express-rate-limit/releases/download/v${VERSION}/express-rate-limit.tgz"
+        > pnpm add $URL
+        ```
+        </CodeGroup>
+    </Tab>
+
+</Tabs>
+
+<Note>
+
+From `v7.5.0` onwards, the minimum supported version of Express is `v4.11`, due
+to the usage of `response.append` in the implementation of the IETF draft
+specification for the `RateLimit` headers. If you do not set the
+`standardHeaders` option to `draft-7` or `draft-8`, you can still safely use any
+version of Express, `v4.0.0` onwards.
+
+</Note>
+
+You can view the changes made in each version in the
+[changelog](../reference/changelog).

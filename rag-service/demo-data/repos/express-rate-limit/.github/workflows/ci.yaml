@@ -1,0 +1,133 @@
+# /.github/workflows/ci.yaml
+# GitHub actions workflow to run tests on each commit, and publish new tags.
+
+name: CI
+
+on:
+  - push
+  - pull_request
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Use Node LTS
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - name: Setup PNPM
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v3
+        with:
+          version: 10
+      - name: Install dependencies
+        run: pnpm install
+      - name: Check for lint/formatting errors
+        run: pnpm run lint
+  test-library:
+    name: Test (Library)
+    strategy:
+      matrix:
+        node-version: [lts/iron, lts/jod, lts/*, latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Use Node ${{ matrix.node-version }}
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Setup PNPM
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v3
+        with:
+          version: 10
+      - name: Install dependencies
+        run: pnpm install
+      - name: Run library tests
+        run: pnpm run test:lib
+  test-external:
+    name: Test (External)
+    strategy:
+      matrix:
+        node-version: [lts/*, latest]
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Use Node ${{ matrix.node-version }}
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Setup PNPM
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v3
+        with:
+          version: 10
+      - name: Install dependencies
+        run: pnpm install
+      - name: Package the library
+        run: pnpm pack
+      - name: Run import and external store usage tests
+        run: pnpm test:ext
+  action-pinning:
+    name: Verify action pinning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fail if any workflow uses a mutable action ref
+        run: |
+          set -euo pipefail
+          # Every remote `uses:` reference must be pinned to a full-length
+          # (40-char) commit SHA, so a moved or re-pointed tag cannot inject
+          # code into the workflow. Local (./) and docker:// refs are exempt.
+          bad=$(grep -rEn '^\s*uses:' .github/workflows \
+                | grep -Ev 'uses:\s*(\./|docker://)' \
+                | grep -Ev '@[0-9a-f]{40}([[:space:]]|$)' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Unpinned GitHub Action reference(s) found:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "All workflow action references are pinned to a commit SHA."
+  publish:
+    name: Publish
+    needs: [lint, test-library, test-external]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Use Node LTS
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          registry-url: https://registry.npmjs.org/
+      - name: Setup PNPM
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v3
+        with:
+          version: 10
+      - name: Install dependencies
+        run: pnpm install
+      - name: Publish package to NPM
+        run: npm publish
+      - name: Build package to upload to GitHub releases
+        run: |
+          pnpm pack
+          mv express-rate-limit-*.tgz express-rate-limit.tgz
+      - name: Create a Github release
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
+        with:
+          files: express-rate-limit.tgz
+          body:
+            You can view the changelog
+            [here](https://express-rate-limit.mintlify.app/reference/changelog).
